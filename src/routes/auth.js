@@ -243,6 +243,46 @@ authRouter.post("/supabase/exchange", async (req, res, next) => {
   }
 });
 
+authRouter.post("/dev-login", async (req, res, next) => {
+  try {
+    if (process.env.NODE_ENV === "production") {
+      return res.status(403).json({ error: "Disabled in production" });
+    }
+
+    const email = "admin@example.com";
+    const existing = await db.get("SELECT id, email, role FROM admin_users WHERE email = ?", [email]);
+    let user = existing;
+
+    if (!user) {
+      const id = uuidv4();
+      const createdAt = new Date().toISOString();
+      await db.run(
+        `INSERT INTO admin_users
+         (id, email, password_hash, role, company_name, company_logo_url, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        [id, email, SUPABASE_PASSWORD_MARKER, "owner", "Demo Company", null, createdAt],
+      );
+      user = { id, email, role: "owner" };
+    }
+
+    const token = signToken({
+      sub: user.id,
+      email: user.email,
+      role: user.role || "owner",
+    });
+    return res.json({
+      token,
+      user: {
+        id: user.id,
+        email: user.email,
+        role: user.role || "owner",
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
 authRouter.get("/me", requireAuth, async (req, res, next) => {
   try {
     const user = await db.get("SELECT id, email, role, created_at FROM admin_users WHERE id = ?", [

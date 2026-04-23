@@ -895,6 +895,26 @@ section {
     padding-top: 1.2rem;
   }
 
+  .hero-content {
+    width: 100%;
+    max-width: 100%;
+    padding-inline: 0.6rem;
+    margin-inline: auto;
+    text-align: center;
+  }
+
+  .hero h1,
+  .hero-subheadline,
+  .hero-logo-marquee p {
+    text-align: center;
+  }
+
+  .hero-subheadline {
+    max-width: 100%;
+    margin-inline: auto;
+    padding-inline: 0.15rem;
+  }
+
   .stats-strip {
     grid-template-columns: 1fr;
   }
