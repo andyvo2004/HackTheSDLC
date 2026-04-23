@@ -5,7 +5,7 @@ import helmet from "helmet";
 import morgan from "morgan";
 import bcrypt from "bcryptjs";
 import { v4 as uuidv4 } from "uuid";
-import { initDb, db } from "./db.js";
+import { initDb } from "./db.js";
 import { authRouter } from "./routes/auth.js";
 import { pagesRouter } from "./routes/pages.js";
 import { publicRouter } from "./routes/public.js";
@@ -16,6 +16,7 @@ import { registerStripeWebhook } from "./routes/webhooks.js";
 import { adminUsersRouter } from "./routes/adminUsers.js";
 import { feedClients } from "./feed.js";
 import { verifyToken } from "./lib/auth.js";
+import { supabaseAdmin } from "./lib/supabaseAdmin.js";
 
 const app = express();
 const port = Number(process.env.PORT || 4000);
@@ -86,14 +87,23 @@ async function seedAdmin() {
   const password = process.env.ADMIN_PASSWORD;
   if (!email || !password) return;
 
-  const existing = await db.get("SELECT id FROM admin_users WHERE email = ?", [email]);
+  const { data: existing, error: existingError } = await supabaseAdmin
+    .from("admin_users")
+    .select("id")
+    .eq("email", email.trim().toLowerCase())
+    .maybeSingle();
+  if (existingError) throw existingError;
   if (existing) return;
 
   const hash = await bcrypt.hash(password, 10);
-  await db.run(
-    "INSERT INTO admin_users (id, email, password_hash, role, created_at) VALUES (?, ?, ?, ?, ?)",
-    [uuidv4(), email, hash, "owner", new Date().toISOString()],
-  );
+  const { error } = await supabaseAdmin.from("admin_users").insert({
+    id: uuidv4(),
+    email: email.trim().toLowerCase(),
+    password_hash: hash,
+    role: "owner",
+    created_at: new Date().toISOString(),
+  });
+  if (error) throw error;
   console.log(`Seeded admin user: ${email}`);
 }
 

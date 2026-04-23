@@ -1,7 +1,7 @@
 import { Router } from "express";
 import bcrypt from "bcryptjs";
 import { v4 as uuidv4 } from "uuid";
-import { db } from "../db.js";
+import { supabaseAdmin } from "../lib/supabaseAdmin.js";
 import { signToken } from "../lib/auth.js";
 import { requireAuth } from "../middleware/requireAuth.js";
 
@@ -57,28 +57,40 @@ async function ensureLocalUser({
   companyLogoUrl = null,
 }) {
   const normalizedEmail = email.trim().toLowerCase();
-  const existing = await db.get("SELECT id, email, role, password_hash FROM admin_users WHERE email = ?", [
-    normalizedEmail,
-  ]);
+  const { data: existing, error: existingError } = await supabaseAdmin
+    .from("admin_users")
+    .select("id,email,role,password_hash")
+    .eq("email", normalizedEmail)
+    .maybeSingle();
+  if (existingError) throw existingError;
   if (existing) {
     if (existing.password_hash !== SUPABASE_PASSWORD_MARKER) {
-      await db.run("UPDATE admin_users SET password_hash = ? WHERE id = ?", [SUPABASE_PASSWORD_MARKER, existing.id]);
+      const { error } = await supabaseAdmin
+        .from("admin_users")
+        .update({ password_hash: SUPABASE_PASSWORD_MARKER })
+        .eq("id", existing.id);
+      if (error) throw error;
     }
-    await db.run(
-      "UPDATE admin_users SET role = ?, company_name = ?, company_logo_url = ? WHERE id = ?",
-      [role, companyName, companyLogoUrl, existing.id],
-    );
+    const { error } = await supabaseAdmin
+      .from("admin_users")
+      .update({ role, company_name: companyName, company_logo_url: companyLogoUrl })
+      .eq("id", existing.id);
+    if (error) throw error;
     return { id: existing.id, email: existing.email, role };
   }
 
   const userId = supabaseUserId || uuidv4();
   const createdAt = new Date().toISOString();
-  await db.run(
-    `INSERT INTO admin_users
-     (id, email, password_hash, role, company_name, company_logo_url, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`,
-    [userId, normalizedEmail, SUPABASE_PASSWORD_MARKER, role, companyName, companyLogoUrl, createdAt],
-  );
+  const { error: insertError } = await supabaseAdmin.from("admin_users").insert({
+    id: userId,
+    email: normalizedEmail,
+    password_hash: SUPABASE_PASSWORD_MARKER,
+    role,
+    company_name: companyName,
+    company_logo_url: companyLogoUrl,
+    created_at: createdAt,
+  });
+  if (insertError) throw insertError;
   return { id: userId, email: normalizedEmail, role };
 }
 
@@ -107,9 +119,13 @@ authRouter.post("/login", async (req, res, next) => {
     const supabaseAuth = await supabasePasswordSignIn(normalizedEmail, password);
     if (!supabaseAuth?.user) return res.status(401).json({ error: "Invalid credentials" });
     const normalizedSupabaseEmail = (supabaseAuth.user.email || normalizedEmail).toLowerCase();
-    let resolvedUser = await db.get("SELECT id, email, role FROM admin_users WHERE email = ?", [
-      normalizedSupabaseEmail,
-    ]);
+    const { data: resolvedExisting, error: resolvedError } = await supabaseAdmin
+      .from("admin_users")
+      .select("id,email,role")
+      .eq("email", normalizedSupabaseEmail)
+      .maybeSingle();
+    if (resolvedError) throw resolvedError;
+    let resolvedUser = resolvedExisting;
     if (!resolvedUser) {
       resolvedUser = await ensureLocalUser({
         email: normalizedSupabaseEmail,
@@ -199,10 +215,11 @@ authRouter.post("/signup", async (req, res, next) => {
       companyLogoUrl,
     });
     const localPasswordHash = await bcrypt.hash(password, 10);
-    await db.run("UPDATE admin_users SET password_hash = ? WHERE id = ?", [
-      localPasswordHash,
-      user.id,
-    ]);
+    const { error: pwError } = await supabaseAdmin
+      .from("admin_users")
+      .update({ password_hash: localPasswordHash })
+      .eq("id", user.id);
+    if (pwError) throw pwError;
 
     const supabaseAuth = await supabasePasswordSignIn(normalizedEmail, password);
     if (supabaseAuth?.user) {
@@ -234,7 +251,12 @@ authRouter.post("/supabase/exchange", async (req, res, next) => {
       return res.status(401).json({ error: "Invalid Supabase session" });
     }
 
-    const existing = await db.get("SELECT id, email, role FROM admin_users WHERE email = ?", [supabaseUser.email]);
+    const { data: existing, error: existingError } = await supabaseAdmin
+      .from("admin_users")
+      .select("id,email,role")
+      .eq("email", String(supabaseUser.email).toLowerCase())
+      .maybeSingle();
+    if (existingError) throw existingError;
     if (existing) {
       const token = signToken({
         sub: existing.id,
@@ -263,9 +285,12 @@ authRouter.post("/supabase/exchange", async (req, res, next) => {
 
 authRouter.get("/me", requireAuth, async (req, res, next) => {
   try {
-    const user = await db.get("SELECT id, email, role, created_at FROM admin_users WHERE id = ?", [
-      req.user.sub,
-    ]);
+    const { data: user, error } = await supabaseAdmin
+      .from("admin_users")
+      .select("id,email,role,created_at")
+      .eq("id", req.user.sub)
+      .maybeSingle();
+    if (error) throw error;
     if (!user) return res.status(404).json({ error: "User not found" });
     return res.json({
       id: user.id,

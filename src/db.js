@@ -1,339 +1,78 @@
-import fs from "node:fs";
-import path from "node:path";
 import crypto from "node:crypto";
-import sqlite3 from "sqlite3";
-import { promisify } from "node:util";
+import { supabaseAdmin, supabaseConfigured } from "./lib/supabaseAdmin.js";
 
-const dbPath = process.env.DB_PATH || "./data/app.db";
-const resolvedPath = path.resolve(dbPath);
-fs.mkdirSync(path.dirname(resolvedPath), { recursive: true });
+async function maybeSeedDemoData() {
+  const { data: existingPage } = await supabaseAdmin
+    .from("payment_pages")
+    .select("id")
+    .eq("slug", "yoga-class")
+    .maybeSingle();
+  if (existingPage) return;
 
-sqlite3.verbose();
-const rawDb = new sqlite3.Database(resolvedPath);
+  const now = new Date().toISOString();
+  const yogaPageId = crypto.randomUUID();
+  const parkingPageId = crypto.randomUUID();
 
-export const db = {
-  run: (sql, params = []) =>
-    new Promise((resolve, reject) => {
-      rawDb.run(sql, params, function onRun(err) {
-        if (err) return reject(err);
-        resolve({ id: this.lastID, changes: this.changes });
-      });
-    }),
-  get: promisify(rawDb.get.bind(rawDb)),
-  all: promisify(rawDb.all.bind(rawDb)),
-};
+  const { error: pagesError } = await supabaseAdmin.from("payment_pages").insert([
+    {
+      id: yogaPageId,
+      slug: "yoga-class",
+      title: "Yoga Class Payment",
+      subtitle: "Secure class fee checkout",
+      description: "Use this page to pay for your upcoming yoga class.",
+      logo_url: "",
+      brand_color: "#0f63ff",
+      header_message: "Thank you for choosing our organization",
+      footer_message: "Need help? Reach our billing support team.",
+      amount_mode: "fixed",
+      fixed_amount: 25,
+      gl_codes_json: "[]",
+      current_version: 1,
+      last_published_at: now,
+      is_active: true,
+      created_at: now,
+      updated_at: now,
+    },
+    {
+      id: parkingPageId,
+      slug: "parking-fee",
+      title: "Parking Fee Payment",
+      subtitle: "Pay parking balances online",
+      description: "Enter your amount and complete payment for parking services.",
+      logo_url: "",
+      brand_color: "#1f7a5a",
+      header_message: "Complete your secure payment below.",
+      footer_message: "Questions? Contact parking support.",
+      amount_mode: "range",
+      min_amount: 10,
+      max_amount: 500,
+      gl_codes_json: "[]",
+      current_version: 1,
+      last_published_at: now,
+      is_active: true,
+      created_at: now,
+      updated_at: now,
+    },
+  ]);
+  if (pagesError) throw pagesError;
+
+  const { error: fieldError } = await supabaseAdmin.from("custom_fields").insert({
+    id: crypto.randomUUID(),
+    page_id: parkingPageId,
+    label: "License Plate",
+    type: "text",
+    options_json: "[]",
+    required: true,
+    placeholder: "ABC-1234",
+    helper_text: "Enter your vehicle plate number",
+    display_order: 0,
+  });
+  if (fieldError) throw fieldError;
+}
 
 export async function initDb() {
-  await db.run("PRAGMA foreign_keys = ON");
-
-  await db.run(`
-    CREATE TABLE IF NOT EXISTS admin_users (
-      id TEXT PRIMARY KEY,
-      email TEXT UNIQUE NOT NULL,
-      password_hash TEXT NOT NULL,
-      role TEXT NOT NULL DEFAULT 'owner',
-      company_name TEXT,
-      company_logo_url TEXT,
-      created_at TEXT NOT NULL
-    )
-  `);
-
-  await db.run(`
-    CREATE TABLE IF NOT EXISTS payment_pages (
-      id TEXT PRIMARY KEY,
-      slug TEXT UNIQUE NOT NULL,
-      title TEXT NOT NULL,
-      subtitle TEXT,
-      description TEXT,
-      logo_url TEXT,
-      brand_color TEXT,
-      header_message TEXT,
-      footer_message TEXT,
-      amount_mode TEXT NOT NULL CHECK (amount_mode IN ('fixed', 'range', 'user_entered')),
-      fixed_amount REAL,
-      min_amount REAL,
-      max_amount REAL,
-      gl_codes_json TEXT NOT NULL DEFAULT '[]',
-      email_template TEXT,
-      draft_config_json TEXT,
-      current_version INTEGER NOT NULL DEFAULT 1,
-      last_published_at TEXT,
-      is_active INTEGER NOT NULL DEFAULT 1,
-      created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL
-    )
-  `);
-
-  await db.run(`
-    CREATE TABLE IF NOT EXISTS payment_page_versions (
-      id TEXT PRIMARY KEY,
-      page_id TEXT NOT NULL,
-      version_number INTEGER NOT NULL,
-      config_json TEXT NOT NULL,
-      published_by TEXT,
-      created_at TEXT NOT NULL,
-      FOREIGN KEY(page_id) REFERENCES payment_pages(id) ON DELETE CASCADE
-    )
-  `);
-
-  await db.run(`
-    CREATE TABLE IF NOT EXISTS custom_fields (
-      id TEXT PRIMARY KEY,
-      page_id TEXT NOT NULL,
-      label TEXT NOT NULL,
-      type TEXT NOT NULL CHECK (type IN ('text', 'number', 'dropdown', 'date', 'checkbox')),
-      options_json TEXT,
-      required INTEGER NOT NULL DEFAULT 0,
-      placeholder TEXT,
-      helper_text TEXT,
-      display_order INTEGER NOT NULL DEFAULT 0,
-      FOREIGN KEY(page_id) REFERENCES payment_pages(id) ON DELETE CASCADE
-    )
-  `);
-
-  await db.run(`
-    CREATE TABLE IF NOT EXISTS transactions (
-      id TEXT PRIMARY KEY,
-      page_id TEXT NOT NULL,
-      amount REAL NOT NULL,
-      payment_method TEXT NOT NULL,
-      status TEXT NOT NULL CHECK (status IN ('success', 'failed', 'pending')),
-      payer_name TEXT,
-      payer_email TEXT,
-      processor_ref TEXT,
-      stripe_payment_intent_id TEXT,
-      gl_codes_json TEXT NOT NULL DEFAULT '[]',
-      created_at TEXT NOT NULL,
-      FOREIGN KEY(page_id) REFERENCES payment_pages(id)
-    )
-  `);
-
-  await db.run(`
-    CREATE TABLE IF NOT EXISTS field_responses (
-      id TEXT PRIMARY KEY,
-      transaction_id TEXT NOT NULL,
-      field_id TEXT NOT NULL,
-      value TEXT,
-      FOREIGN KEY(transaction_id) REFERENCES transactions(id) ON DELETE CASCADE,
-      FOREIGN KEY(field_id) REFERENCES custom_fields(id)
-    )
-  `);
-
-  await db.run(`
-    CREATE TABLE IF NOT EXISTS page_views (
-      id TEXT PRIMARY KEY,
-      page_id TEXT NOT NULL,
-      visited_at TEXT NOT NULL,
-      FOREIGN KEY(page_id) REFERENCES payment_pages(id) ON DELETE CASCADE
-    )
-  `);
-
-  await db.run(`
-    CREATE TABLE IF NOT EXISTS webhook_events (
-      id TEXT PRIMARY KEY,
-      processor TEXT NOT NULL,
-      event_type TEXT NOT NULL,
-      payment_intent_id TEXT,
-      received_at TEXT NOT NULL
-    )
-  `);
-
-  await db.run(
-    "CREATE UNIQUE INDEX IF NOT EXISTS idx_webhook_events_processor_id ON webhook_events(processor, id)",
-  );
-
-  const txColumns = await db.all("PRAGMA table_info(transactions)");
-  const hasStripeIntentId = txColumns.some((c) => c.name === "stripe_payment_intent_id");
-  if (!hasStripeIntentId) {
-    await db.run("ALTER TABLE transactions ADD COLUMN stripe_payment_intent_id TEXT");
+  if (!supabaseConfigured()) {
+    throw new Error("Supabase is not configured. Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY.");
   }
-
-  await db.run(
-    "CREATE UNIQUE INDEX IF NOT EXISTS idx_transactions_stripe_intent_id ON transactions(stripe_payment_intent_id)",
-  );
-
-  const adminColumns = await db.all("PRAGMA table_info(admin_users)");
-  const hasRoleColumn = adminColumns.some((c) => c.name === "role");
-  const hasCompanyNameColumn = adminColumns.some((c) => c.name === "company_name");
-  const hasCompanyLogoColumn = adminColumns.some((c) => c.name === "company_logo_url");
-  if (!hasRoleColumn) {
-    await db.run("ALTER TABLE admin_users ADD COLUMN role TEXT NOT NULL DEFAULT 'owner'");
-  }
-  if (!hasCompanyNameColumn) {
-    await db.run("ALTER TABLE admin_users ADD COLUMN company_name TEXT");
-  }
-  if (!hasCompanyLogoColumn) {
-    await db.run("ALTER TABLE admin_users ADD COLUMN company_logo_url TEXT");
-  }
-  await db.run("UPDATE admin_users SET role = 'owner' WHERE role IS NULL OR role = ''");
-
-  const pageColumns = await db.all("PRAGMA table_info(payment_pages)");
-  const pageColumnNames = new Set(pageColumns.map((c) => c.name));
-  if (!pageColumnNames.has("draft_config_json")) {
-    await db.run("ALTER TABLE payment_pages ADD COLUMN draft_config_json TEXT");
-  }
-  if (!pageColumnNames.has("current_version")) {
-    await db.run("ALTER TABLE payment_pages ADD COLUMN current_version INTEGER NOT NULL DEFAULT 1");
-  }
-  if (!pageColumnNames.has("last_published_at")) {
-    await db.run("ALTER TABLE payment_pages ADD COLUMN last_published_at TEXT");
-  }
-  await db.run("UPDATE payment_pages SET current_version = 1 WHERE current_version IS NULL OR current_version < 1");
-
-  const pages = await db.all("SELECT * FROM payment_pages");
-  for (const page of pages) {
-    const versionCount = await db.get(
-      "SELECT COUNT(*) AS count FROM payment_page_versions WHERE page_id = ?",
-      [page.id],
-    );
-    if (Number(versionCount.count || 0) > 0) continue;
-
-    const customFields = await db.all(
-      "SELECT * FROM custom_fields WHERE page_id = ? ORDER BY display_order ASC",
-      [page.id],
-    );
-    const config = {
-      slug: page.slug,
-      title: page.title,
-      subtitle: page.subtitle,
-      description: page.description,
-      logoUrl: page.logo_url,
-      brandColor: page.brand_color,
-      headerMessage: page.header_message,
-      footerMessage: page.footer_message,
-      amountMode: page.amount_mode,
-      fixedAmount: page.fixed_amount,
-      minAmount: page.min_amount,
-      maxAmount: page.max_amount,
-      glCodes: JSON.parse(page.gl_codes_json || "[]"),
-      emailTemplate: page.email_template,
-      isActive: Boolean(page.is_active),
-      customFields: customFields.map((f) => ({
-        id: f.id,
-        label: f.label,
-        type: f.type,
-        options: f.options_json ? JSON.parse(f.options_json) : [],
-        required: Boolean(f.required),
-        placeholder: f.placeholder,
-        helperText: f.helper_text,
-        order: f.display_order,
-      })),
-    };
-    await db.run(
-      `INSERT INTO payment_page_versions (id, page_id, version_number, config_json, published_by, created_at)
-       VALUES (?, ?, ?, ?, ?, ?)`,
-      [crypto.randomUUID(), page.id, Number(page.current_version || 1), JSON.stringify(config), null, new Date().toISOString()],
-    );
-    if (!page.last_published_at) {
-      await db.run("UPDATE payment_pages SET last_published_at = ? WHERE id = ?", [
-        page.updated_at || page.created_at,
-        page.id,
-      ]);
-    }
-  }
-
-  const pageCount = await db.get("SELECT COUNT(*) AS count FROM payment_pages");
-  if (Number(pageCount.count || 0) === 0) {
-    const now = new Date().toISOString();
-    const yogaPageId = crypto.randomUUID();
-    const parkingPageId = crypto.randomUUID();
-    const demoPages = [
-      {
-        id: yogaPageId,
-        slug: "yoga-class",
-        title: "Yoga Class Payment",
-        subtitle: "Secure class fee checkout",
-        description: "Use this page to pay for your upcoming yoga class.",
-        logoUrl: "",
-        brandColor: "#0f63ff",
-        headerMessage: "Thank you for choosing our organization",
-        footerMessage: "Need help? Reach our billing support team.",
-        amountMode: "fixed",
-        fixedAmount: 25,
-        minAmount: null,
-        maxAmount: null,
-        glCodes: ["GL-100"],
-      },
-      {
-        id: parkingPageId,
-        slug: "parking-fee",
-        title: "Parking Fee Payment",
-        subtitle: "Pay parking balances online",
-        description: "Enter your amount and complete payment for parking services.",
-        logoUrl: "",
-        brandColor: "#1f7a5a",
-        headerMessage: "Complete your secure payment below.",
-        footerMessage: "Questions? Contact parking support.",
-        amountMode: "range",
-        fixedAmount: null,
-        minAmount: 10,
-        maxAmount: 500,
-        glCodes: ["GL-200"],
-      },
-    ];
-
-    for (const page of demoPages) {
-      await db.run(
-        `INSERT INTO payment_pages
-        (id, slug, title, subtitle, description, logo_url, brand_color, header_message, footer_message, amount_mode, fixed_amount, min_amount, max_amount, gl_codes_json, email_template, draft_config_json, current_version, last_published_at, is_active, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [
-          page.id,
-          page.slug,
-          page.title,
-          page.subtitle,
-          page.description,
-          page.logoUrl,
-          page.brandColor,
-          page.headerMessage,
-          page.footerMessage,
-          page.amountMode,
-          page.fixedAmount,
-          page.minAmount,
-          page.maxAmount,
-          JSON.stringify(page.glCodes),
-          null,
-          null,
-          1,
-          now,
-          1,
-          now,
-          now,
-        ],
-      );
-    }
-
-    await db.run(
-      `INSERT INTO custom_fields
-      (id, page_id, label, type, options_json, required, placeholder, helper_text, display_order)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [crypto.randomUUID(), parkingPageId, "License Plate", "text", "[]", 1, "ABC-1234", "Enter your vehicle plate number", 0],
-    );
-  }
-
-  const txCount = await db.get("SELECT COUNT(*) AS count FROM transactions");
-  if (Number(txCount.count || 0) === 0) {
-    const firstPage = await db.get("SELECT id, gl_codes_json FROM payment_pages ORDER BY created_at ASC LIMIT 1");
-    if (firstPage) {
-      const now = new Date().toISOString();
-      await db.run(
-        `INSERT INTO transactions
-        (id, page_id, amount, payment_method, status, payer_name, payer_email, processor_ref, stripe_payment_intent_id, gl_codes_json, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [
-          crypto.randomUUID(),
-          firstPage.id,
-          25,
-          "card",
-          "success",
-          "Demo Payer",
-          "demo@example.com",
-          "demo_txn_seed",
-          "pi_demo_seed",
-          firstPage.gl_codes_json || "[]",
-          now,
-        ],
-      );
-    }
-  }
+  await maybeSeedDemoData();
 }

@@ -18,7 +18,7 @@ Quick Payment Pages is a hosted, self-service payment platform that lets provide
                               │
                         [Vite Proxy]
                               │
-[Admin Browser]  ──→  [Express API :3001]  ──→  [SQLite Database]
+[Admin Browser]  ──→  [Express API :3001]  ──→  [Supabase Postgres]
                               │
                        [Stripe API (sandbox)]
                               │
@@ -31,7 +31,7 @@ Quick Payment Pages is a hosted, self-service payment platform that lets provide
 |-----------|-----------------------------------------|
 | Frontend  | React 18 + Vite, vanilla CSS            |
 | Backend   | Node.js + Express                       |
-| Database  | SQLite (via sqlite3)                    |
+| Database  | Supabase Postgres                       |
 | Payments  | Stripe (sandbox/test mode only)         |
 | Email     | Nodemailer / SMTP (stub mode in dev)    |
 | Auth      | JWT (jsonwebtoken)                      |
@@ -56,7 +56,8 @@ Key relationships:
 | `JWT_SECRET`           | Secret for signing JWT tokens            | Yes      |
 | `ADMIN_EMAIL`          | Seeded owner account email               | Yes      |
 | `ADMIN_PASSWORD`       | Seeded owner account password            | Yes      |
-| `DB_PATH`              | Path to SQLite database file             | No       |
+| `SUPABASE_URL`         | Supabase project URL                     | Yes      |
+| `SUPABASE_SERVICE_ROLE_KEY` | Supabase service role key          | Yes      |
 | `STRIPE_SECRET_KEY`    | Must start with `sk_test_`              | Yes      |
 | `STRIPE_WEBHOOK_SECRET`| Stripe webhook signing secret            | Yes      |
 | `SMTP_HOST`            | SMTP server hostname                     | No       |

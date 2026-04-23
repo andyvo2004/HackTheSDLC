@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { v4 as uuidv4 } from "uuid";
 import { z } from "zod";
-import { db } from "../db.js";
+import { supabaseAdmin } from "../lib/supabaseAdmin.js";
 import { renderConfirmationEmail, sendConfirmationEmail } from "../lib/email.js";
 import { dollarsToCents, getStripeClient, stripeEnabled } from "../lib/stripe.js";
 import { broadcastPaymentEvent } from "../feed.js";
@@ -34,18 +34,26 @@ function resolveAmount(page, inputAmount) {
 
 publicRouter.get("/pay/:slug", async (req, res, next) => {
   try {
-    const page = await db.get("SELECT * FROM payment_pages WHERE slug = ?", [req.params.slug]);
+    const { data: page, error: pageError } = await supabaseAdmin
+      .from("payment_pages")
+      .select("*")
+      .eq("slug", req.params.slug)
+      .maybeSingle();
+    if (pageError) throw pageError;
     if (!page || !page.is_active) return res.status(404).json({ error: "Payment page not found" });
-    await db.run("INSERT INTO page_views (id, page_id, visited_at) VALUES (?, ?, ?)", [
-      uuidv4(),
-      page.id,
-      new Date().toISOString(),
-    ]);
+    const { error: viewError } = await supabaseAdmin.from("page_views").insert({
+      id: uuidv4(),
+      page_id: page.id,
+      visited_at: new Date().toISOString(),
+    });
+    if (viewError) throw viewError;
 
-    const fields = await db.all(
-      "SELECT * FROM custom_fields WHERE page_id = ? ORDER BY display_order ASC",
-      [page.id],
-    );
+    const { data: fields, error: fieldsError } = await supabaseAdmin
+      .from("custom_fields")
+      .select("*")
+      .eq("page_id", page.id)
+      .order("display_order", { ascending: true });
+    if (fieldsError) throw fieldsError;
 
     return res.json({
       id: page.id,
@@ -100,10 +108,19 @@ publicRouter.post("/pay/:slug/create-payment-intent", async (req, res, next) => 
       return res.status(400).json({ error: "Validation failed", details: parsed.error.flatten() });
     }
 
-    const page = await db.get("SELECT * FROM payment_pages WHERE slug = ?", [req.params.slug]);
+    const { data: page, error: pageError } = await supabaseAdmin
+      .from("payment_pages")
+      .select("*")
+      .eq("slug", req.params.slug)
+      .maybeSingle();
+    if (pageError) throw pageError;
     if (!page || !page.is_active) return res.status(404).json({ error: "Payment page not found" });
 
-    const fields = await db.all("SELECT * FROM custom_fields WHERE page_id = ?", [page.id]);
+    const { data: fields, error: fieldsError } = await supabaseAdmin
+      .from("custom_fields")
+      .select("*")
+      .eq("page_id", page.id);
+    if (fieldsError) throw fieldsError;
     const amount = resolveAmount(page, parsed.data.amount);
     if (amount == null || amount <= 0) {
       return res.status(400).json({ error: "Invalid amount for this payment page" });
@@ -151,32 +168,31 @@ publicRouter.post("/pay/:slug/create-payment-intent", async (req, res, next) => 
 
     const intent = await stripe.paymentIntents.create(intentParams);
 
-    await db.run(
-      `INSERT INTO transactions
-      (id, page_id, amount, payment_method, status, payer_name, payer_email, processor_ref, stripe_payment_intent_id, gl_codes_json, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        txnId,
-        page.id,
-        amount,
-        parsed.data.paymentMethod,
-        "pending",
-        parsed.data.payerName || null,
-        parsed.data.payerEmail,
-        intent.id,
-        intent.id,
-        page.gl_codes_json || "[]",
-        now,
-      ],
-    );
+    const { error: txError } = await supabaseAdmin.from("transactions").insert({
+      id: txnId,
+      page_id: page.id,
+      amount,
+      payment_method: parsed.data.paymentMethod,
+      status: "pending",
+      payer_name: parsed.data.payerName || null,
+      payer_email: parsed.data.payerEmail,
+      processor_ref: intent.id,
+      stripe_payment_intent_id: intent.id,
+      gl_codes_json: page.gl_codes_json || "[]",
+      created_at: now,
+    });
+    if (txError) throw txError;
 
     for (const field of fields) {
       const val = parsed.data.fieldResponses[field.id];
       if (val !== undefined) {
-        await db.run(
-          "INSERT INTO field_responses (id, transaction_id, field_id, value) VALUES (?, ?, ?, ?)",
-          [uuidv4(), txnId, field.id, String(val)],
-        );
+        const { error } = await supabaseAdmin.from("field_responses").insert({
+          id: uuidv4(),
+          transaction_id: txnId,
+          field_id: field.id,
+          value: String(val),
+        });
+        if (error) throw error;
       }
     }
 
@@ -207,10 +223,12 @@ publicRouter.post("/pay/:slug/confirm", async (req, res, next) => {
       return res.status(400).json({ error: "paymentIntentId is required" });
     }
 
-    const tx = await db.get(
-      "SELECT t.*, p.title AS page_title, p.slug AS page_slug, p.email_template AS page_email_template FROM transactions t JOIN payment_pages p ON p.id = t.page_id WHERE t.stripe_payment_intent_id = ?",
-      [paymentIntentId],
-    );
+    const { data: tx, error: txError } = await supabaseAdmin
+      .from("transactions")
+      .select("*,payment_pages!inner(title,slug,email_template)")
+      .eq("stripe_payment_intent_id", paymentIntentId)
+      .maybeSingle();
+    if (txError) throw txError;
     if (!tx) return res.status(404).json({ error: "Transaction not found" });
 
     const stripe = getStripeClient();
@@ -222,10 +240,17 @@ publicRouter.post("/pay/:slug/confirm", async (req, res, next) => {
           ? "failed"
           : "pending";
 
-    await db.run(
-      "UPDATE transactions SET status = ?, processor_ref = ?, payment_method = ? WHERE id = ?",
-      [mappedStatus, intent.id, inferMethodFromStripeIntent(intent), tx.id],
-    );
+    const { error: updateError } = await supabaseAdmin
+      .from("transactions")
+      .update({
+        status: mappedStatus,
+        processor_ref: intent.id,
+        payment_method: inferMethodFromStripeIntent(intent),
+      })
+      .eq("id", tx.id);
+    if (updateError) throw updateError;
+
+    const pageDetails = Array.isArray(tx.payment_pages) ? tx.payment_pages[0] : tx.payment_pages;
 
     if (mappedStatus === "success") {
       broadcastPaymentEvent({
@@ -234,12 +259,12 @@ publicRouter.post("/pay/:slug/confirm", async (req, res, next) => {
         amount: tx.amount,
         currency: "usd",
         payer_name: tx.payer_name || "Anonymous",
-        page_title: tx.page_title,
-        page_slug: tx.page_slug,
+        page_title: pageDetails?.title,
+        page_slug: pageDetails?.slug,
         created_at: new Date().toISOString(),
       });
 
-      if (tx.payer_email) {
+      if (tx.payer_email && pageDetails?.title) {
         const context = {
           payerName: tx.payer_name,
           amount: tx.amount,
@@ -247,10 +272,10 @@ publicRouter.post("/pay/:slug/confirm", async (req, res, next) => {
           date: tx.created_at,
           customFields: {},
         };
-        const emailBody = renderConfirmationEmail(tx.page_email_template, context);
+        const emailBody = renderConfirmationEmail(pageDetails?.email_template, context);
         await sendConfirmationEmail({
           to: tx.payer_email,
-          subject: `Payment confirmation - ${tx.page_title}`,
+          subject: `Payment confirmation - ${pageDetails.title}`,
           body: emailBody,
         });
       }

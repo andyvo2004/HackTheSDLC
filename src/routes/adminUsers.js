@@ -2,7 +2,7 @@ import { Router } from "express";
 import bcrypt from "bcryptjs";
 import { v4 as uuidv4 } from "uuid";
 import { z } from "zod";
-import { db } from "../db.js";
+import { isUniqueViolation, supabaseAdmin } from "../lib/supabaseAdmin.js";
 
 const roleSchema = z.enum(["viewer", "editor", "owner"]);
 
@@ -33,9 +33,11 @@ export const adminUsersRouter = Router();
 
 adminUsersRouter.get("/", async (_req, res, next) => {
   try {
-    const users = await db.all(
-      "SELECT id, email, role, created_at FROM admin_users ORDER BY created_at DESC",
-    );
+    const { data: users, error } = await supabaseAdmin
+      .from("admin_users")
+      .select("id,email,role,created_at")
+      .order("created_at", { ascending: false });
+    if (error) throw error;
     return res.json(users.map(mapUser));
   } catch (err) {
     next(err);
@@ -52,18 +54,24 @@ adminUsersRouter.post("/", async (req, res, next) => {
     const hash = await bcrypt.hash(password, 10);
     const id = uuidv4();
     const createdAt = new Date().toISOString();
-    await db.run(
-      "INSERT INTO admin_users (id, email, password_hash, role, created_at) VALUES (?, ?, ?, ?, ?)",
-      [id, email, hash, role, createdAt],
-    );
+    const { error: insertError } = await supabaseAdmin.from("admin_users").insert({
+      id,
+      email: email.trim().toLowerCase(),
+      password_hash: hash,
+      role,
+      created_at: createdAt,
+    });
+    if (insertError) throw insertError;
 
-    const created = await db.get(
-      "SELECT id, email, role, created_at FROM admin_users WHERE id = ?",
-      [id],
-    );
+    const { data: created, error: createdError } = await supabaseAdmin
+      .from("admin_users")
+      .select("id,email,role,created_at")
+      .eq("id", id)
+      .single();
+    if (createdError) throw createdError;
     return res.status(201).json(mapUser(created));
   } catch (err) {
-    if (String(err.message || "").includes("UNIQUE constraint failed: admin_users.email")) {
+    if (isUniqueViolation(err)) {
       return res.status(409).json({ error: "User with this email already exists" });
     }
     next(err);
@@ -77,18 +85,30 @@ adminUsersRouter.patch("/:id/role", async (req, res, next) => {
       return res.status(400).json({ error: "Validation failed", details: parsed.error.flatten() });
     }
 
-    const target = await db.get("SELECT id, role FROM admin_users WHERE id = ?", [req.params.id]);
+    const { data: target, error: targetError } = await supabaseAdmin
+      .from("admin_users")
+      .select("id,role")
+      .eq("id", req.params.id)
+      .maybeSingle();
+    if (targetError) throw targetError;
     if (!target) return res.status(404).json({ error: "User not found" });
 
     if (target.id === req.user.sub && parsed.data.role !== "owner") {
       return res.status(400).json({ error: "You cannot demote your own owner account" });
     }
 
-    await db.run("UPDATE admin_users SET role = ? WHERE id = ?", [parsed.data.role, req.params.id]);
-    const updated = await db.get(
-      "SELECT id, email, role, created_at FROM admin_users WHERE id = ?",
-      [req.params.id],
-    );
+    const { error: updateError } = await supabaseAdmin
+      .from("admin_users")
+      .update({ role: parsed.data.role })
+      .eq("id", req.params.id);
+    if (updateError) throw updateError;
+
+    const { data: updated, error: updatedError } = await supabaseAdmin
+      .from("admin_users")
+      .select("id,email,role,created_at")
+      .eq("id", req.params.id)
+      .single();
+    if (updatedError) throw updatedError;
     return res.json(mapUser(updated));
   } catch (err) {
     next(err);
@@ -101,11 +121,20 @@ adminUsersRouter.patch("/:id/password", async (req, res, next) => {
     if (!parsed.success) {
       return res.status(400).json({ error: "Validation failed", details: parsed.error.flatten() });
     }
-    const target = await db.get("SELECT id FROM admin_users WHERE id = ?", [req.params.id]);
+    const { data: target, error: targetError } = await supabaseAdmin
+      .from("admin_users")
+      .select("id")
+      .eq("id", req.params.id)
+      .maybeSingle();
+    if (targetError) throw targetError;
     if (!target) return res.status(404).json({ error: "User not found" });
 
     const hash = await bcrypt.hash(parsed.data.password, 10);
-    await db.run("UPDATE admin_users SET password_hash = ? WHERE id = ?", [hash, req.params.id]);
+    const { error: updateError } = await supabaseAdmin
+      .from("admin_users")
+      .update({ password_hash: hash })
+      .eq("id", req.params.id);
+    if (updateError) throw updateError;
     return res.json({ ok: true });
   } catch (err) {
     next(err);
