@@ -283,6 +283,55 @@ authRouter.post("/supabase/exchange", async (req, res, next) => {
   }
 });
 
+authRouter.post("/dev-login", async (req, res, next) => {
+  try {
+    if (process.env.NODE_ENV === "production") {
+      return res.status(403).json({ error: "Disabled in production" });
+    }
+
+    const email = "admin@example.com";
+    const { data: existing, error: existingError } = await supabaseAdmin
+      .from("admin_users")
+      .select("id,email,role")
+      .eq("email", email)
+      .maybeSingle();
+    if (existingError) throw existingError;
+    let user = existing;
+
+    if (!user) {
+      const id = uuidv4();
+      const createdAt = new Date().toISOString();
+      const { error: insertError } = await supabaseAdmin.from("admin_users").insert({
+        id,
+        email,
+        password_hash: SUPABASE_PASSWORD_MARKER,
+        role: "owner",
+        company_name: "Demo Company",
+        company_logo_url: null,
+        created_at: createdAt,
+      });
+      if (insertError) throw insertError;
+      user = { id, email, role: "owner" };
+    }
+
+    const token = signToken({
+      sub: user.id,
+      email: user.email,
+      role: user.role || "owner",
+    });
+    return res.json({
+      token,
+      user: {
+        id: user.id,
+        email: user.email,
+        role: user.role || "owner",
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
 authRouter.get("/me", requireAuth, async (req, res, next) => {
   try {
     const { data: user, error } = await supabaseAdmin
