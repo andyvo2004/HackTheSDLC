@@ -153,6 +153,30 @@ npm run start
 
 The admin dashboard features a real-time payment activity feed powered by Server-Sent Events (SSE). Every successful payment broadcasts instantly to all connected admin sessions, giving providers immediate awareness without polling or refreshing. This creates a noticeably more professional admin experience than static dashboards.
 
+## Lighthouse Accessibility Audit
+
+Use the built-in Lighthouse script to validate key quality thresholds on the public payment page.
+
+```bash
+# Terminal 1 (backend)
+./dev-env.sh npm run dev
+
+# Terminal 2 (frontend)
+cd frontend
+../dev-env.sh npm run dev -- --host 127.0.0.1 --port 5173
+
+# Terminal 3 (audit)
+cd frontend
+../dev-env.sh npm run test:lighthouse
+```
+
+Optional environment variables for the audit command:
+- `LIGHTHOUSE_URL` (default `http://127.0.0.1:5173/pay/yoga-class`)
+- `LIGHTHOUSE_MIN_ACCESSIBILITY` (default `0.9`)
+- `LIGHTHOUSE_MIN_PERFORMANCE` (default `0.7`)
+- `LIGHTHOUSE_MIN_BEST_PRACTICES` (default `0.85`)
+- `LIGHTHOUSE_MIN_SEO` (default `0.8`)
+
 ## Stretch Goals Implemented
 
 - ACH bank transfer checkout with authorization language and Stripe Financial Connections
