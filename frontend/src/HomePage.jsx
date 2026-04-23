@@ -2,6 +2,9 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useInRouterContext } from "react-router-dom";
 import { motion } from "framer-motion";
 import { BarChart3, Moon, Share2, SlidersHorizontal, Sun } from "lucide-react";
+import qppDarkLogo from "./assets/qpp-dark.png";
+import qppLightLogo from "./assets/qpp-light.png";
+import qppPlainLogo from "./assets/qpp-plain.png";
 import "./HomePage.css";
 
 function SmartNavLink({ to, className, children }) {
@@ -100,7 +103,11 @@ export default function HomePage() {
     <div className={`homepage ${isLightMode ? "light-mode" : ""}`}>
       <header className={`navbar ${isScrolled ? "navbar-scrolled" : ""}`}>
         <a href="#top" className="wordmark">
-          QPP
+          <img
+            src={isLightMode ? qppLightLogo : qppDarkLogo}
+            alt="QPP"
+            className="brand-logo"
+          />
         </a>
         <nav className="nav-links" aria-label="Primary">
           <a
@@ -164,15 +171,7 @@ export default function HomePage() {
             >
               <p>Trusted by teams like</p>
               <div className="logo-track-mask">
-                <motion.div
-                  className="logo-track"
-                  animate={{ x: ["0%", "-50%"] }}
-                  transition={{
-                    duration: 24,
-                    ease: "linear",
-                    repeat: Infinity,
-                  }}
-                >
+                <div className="logo-track logo-track-animate">
                   {[...logoPlaceholders, ...logoPlaceholders].map(
                     (name, index) => (
                       <div key={`${name}-${index}`} className="logo-pill">
@@ -180,7 +179,7 @@ export default function HomePage() {
                       </div>
                     ),
                   )}
-                </motion.div>
+                </div>
               </div>
             </div>
           </div>
@@ -313,7 +312,7 @@ export default function HomePage() {
       </main>
 
       <footer className="footer">
-        <div className="wordmark">QPP</div>
+        <img src={qppPlainLogo} alt="QPP" className="footer-logo" />
         <p>Built for the Waystar Hackathon</p>
         <small>© {new Date().getFullYear()} Quick Payment Pages</small>
       </footer>

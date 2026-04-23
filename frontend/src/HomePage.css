@@ -125,6 +125,15 @@
   letter-spacing: 0.02em;
   color: var(--text);
   text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  line-height: 0;
+}
+
+.brand-logo {
+  height: clamp(2.35rem, 3.9vw, 3rem);
+  width: auto;
+  object-fit: contain;
 }
 
 .nav-actions {
@@ -362,6 +371,20 @@ section {
   width: max-content;
   gap: 0.8rem;
   padding: 0.9rem 0.4rem;
+  will-change: transform;
+}
+
+.logo-track-animate {
+  animation: logo-marquee 26s linear infinite;
+}
+
+@keyframes logo-marquee {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
 }
 
 .logo-pill {
@@ -726,6 +749,14 @@ section {
   border-top: 1px solid rgba(171, 199, 244, 0.16);
   padding: 2.2rem 1rem 2.8rem;
   text-align: center;
+}
+
+.footer-logo {
+  display: block;
+  height: clamp(2.4rem, 4vw, 3.2rem);
+  width: auto;
+  margin: 0 auto 0.55rem;
+  object-fit: contain;
 }
 
 .footer p {
