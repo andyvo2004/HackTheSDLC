@@ -193,7 +193,7 @@ function PublicCheckoutForm({ slug, config, onResult }) {
       return;
     }
     setFieldErrors({});
-    if (!stripe || !elements) return;
+    if (!stripe || (paymentMethod === "card" && !elements)) return;
     setSubmitting(true);
     setStripeError("");
     try {
@@ -226,14 +226,32 @@ function PublicCheckoutForm({ slug, config, onResult }) {
       }
 
       if (paymentMethod === "ach") {
-        onResult({
-          type: "success",
-          message: t("achSubmissionReceived"),
-          transactionId: payload.transactionId,
-          payerEmail,
-          amount,
+        const collectResult = await stripe.collectBankAccountForPayment({
+          clientSecret: payload.clientSecret,
+          params: {
+            payment_method_type: "us_bank_account",
+            payment_method_data: {
+              billing_details: { email: payerEmail, name: payerName },
+            },
+          },
         });
-        return;
+        if (collectResult.error) {
+          const msg = collectResult.error.message || t("stripeConfirmationFailed");
+          setStripeError(msg);
+          setTimeout(() => stripeErrorRef.current?.focus(), 50);
+          throw new Error(msg);
+        }
+
+        const achIntentStatus = collectResult.paymentIntent?.status;
+        if (achIntentStatus === "requires_confirmation") {
+          const confirmAch = await stripe.confirmUsBankAccountPayment(payload.clientSecret);
+          if (confirmAch.error) {
+            const msg = confirmAch.error.message || t("stripeConfirmationFailed");
+            setStripeError(msg);
+            setTimeout(() => stripeErrorRef.current?.focus(), 50);
+            throw new Error(msg);
+          }
+        }
       }
 
       const sync = await apiRequest(`/public/pay/${slug}/confirm`, {
@@ -446,7 +464,11 @@ function PublicCheckoutForm({ slug, config, onResult }) {
         )}
       </fieldset>
 
-      <button type="submit" className="pay-btn" disabled={submitting || !stripe || !elements}>
+      <button
+        type="submit"
+        className="pay-btn"
+        disabled={submitting || !stripe || (paymentMethod === "card" && !elements)}
+      >
         {submitting ? t("processing") : t("completePayment")}
       </button>
     </form>
