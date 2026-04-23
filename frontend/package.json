@@ -14,9 +14,11 @@
   "dependencies": {
     "@stripe/react-stripe-js": "^6.2.0",
     "@stripe/stripe-js": "^9.3.0",
+    "i18next": "^26.0.7",
     "qrcode": "^1.5.4",
     "react": "^19.2.5",
     "react-dom": "^19.2.5",
+    "react-i18next": "^17.0.4",
     "react-router-dom": "^7.14.2"
   },
   "devDependencies": {
