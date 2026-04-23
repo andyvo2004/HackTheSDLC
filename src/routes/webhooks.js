@@ -7,6 +7,7 @@ import { broadcastPaymentEvent } from "../feed.js";
 function mapStripeStatusToTxStatus(stripeStatus) {
   if (stripeStatus === "succeeded") return "success";
   if (stripeStatus === "canceled" || stripeStatus === "requires_payment_method") return "failed";
+  if (stripeStatus === "processing" || stripeStatus === "requires_action") return "pending";
   return "pending";
 }
 
@@ -29,21 +30,47 @@ export function registerStripeWebhook(app) {
       const sig = req.headers["stripe-signature"];
       const event = stripe.webhooks.constructEvent(req.body, sig, webhookSecret);
 
-      if (event.type.startsWith("payment_intent.")) {
-        const pi = event.data.object;
-        const status = mapStripeStatusToTxStatus(pi.status);
+      const paymentIntentId =
+        event.data?.object?.id?.startsWith?.("pi_")
+          ? event.data.object.id
+          : event.data?.object?.payment_intent || null;
+
+      const ledgerResult = await db.run(
+        "INSERT OR IGNORE INTO webhook_events (id, processor, event_type, payment_intent_id, received_at) VALUES (?, ?, ?, ?, ?)",
+        [event.id, "stripe", event.type, paymentIntentId, new Date().toISOString()],
+      );
+      if (Number(ledgerResult.changes || 0) === 0) {
+        return res.json({ received: true, duplicate: true });
+      }
+
+      if (
+        event.type.startsWith("payment_intent.") ||
+        event.type === "charge.refunded" ||
+        event.type === "charge.dispute.created"
+      ) {
         const tx = await db.get(
           "SELECT t.*, p.title AS page_title, p.slug AS page_slug, p.email_template AS page_email_template FROM transactions t JOIN payment_pages p ON p.id = t.page_id WHERE t.stripe_payment_intent_id = ?",
-          [pi.id],
+          [paymentIntentId],
         );
 
         if (tx) {
+          let nextStatus = tx.status;
+          let nextMethod = tx.payment_method;
+
+          if (event.type.startsWith("payment_intent.")) {
+            const pi = event.data.object;
+            nextStatus = mapStripeStatusToTxStatus(pi.status);
+            nextMethod = inferMethodFromStripeIntent(pi);
+          } else if (event.type === "charge.refunded" || event.type === "charge.dispute.created") {
+            nextStatus = "failed";
+          }
+
           await db.run(
-            "UPDATE transactions SET status = ?, processor_ref = ?, payment_method = ? WHERE id = ?",
-            [status, pi.id, inferMethodFromStripeIntent(pi), tx.id],
+            "UPDATE transactions SET status = ?, processor_ref = COALESCE(?, processor_ref), payment_method = ? WHERE id = ?",
+            [nextStatus, paymentIntentId, nextMethod, tx.id],
           );
 
-          if (status === "success") {
+          if (event.type === "payment_intent.succeeded" && tx.status !== "success") {
             broadcastPaymentEvent({
               type: "payment_succeeded",
               transaction_id: tx.id,
