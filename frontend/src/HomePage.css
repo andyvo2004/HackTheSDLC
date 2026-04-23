@@ -295,6 +295,29 @@ section {
   flex-wrap: wrap;
 }
 
+.hero-metrics {
+  margin-top: 0.75rem;
+  text-align: center;
+}
+
+.hero-metric strong {
+  display: block;
+  font-family: "Syne", sans-serif;
+  font-size: clamp(2rem, 7vw, 4rem);
+  line-height: 1;
+  letter-spacing: -0.02em;
+}
+
+.hero-metric span {
+  display: block;
+  margin-top: 0.25rem;
+  font-size: 0.74rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
 .hero-logo-marquee {
   margin-top: 1.6rem;
   width: 100vw;

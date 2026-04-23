@@ -7,6 +7,9 @@ import qppLightLogo from "./assets/qpp-light.png";
 import qppPlainLogo from "./assets/qpp-plain.png";
 import "./HomePage.css";
 
+const PLATFORM_USERS_TARGET = 500000;
+const PLATFORM_USERS_ANIMATION_MS = 900;
+
 function SmartNavLink({ to, className, children }) {
   const inRouterContext = useInRouterContext();
 
@@ -29,6 +32,7 @@ export default function HomePage() {
   const [isScrolled, setIsScrolled] = useState(false);
   const [scrollY, setScrollY] = useState(0);
   const [isLightMode, setIsLightMode] = useState(false);
+  const [platformUsers, setPlatformUsers] = useState(0);
   const heroMockupRef = useRef(null);
   const howItWorksBgRef = useRef(null);
 
@@ -71,6 +75,22 @@ export default function HomePage() {
     ],
     []
   );
+
+  useEffect(() => {
+    let rafId = null;
+    const start = performance.now();
+    const tick = (now) => {
+      const elapsed = now - start;
+      const progress = Math.min(1, elapsed / PLATFORM_USERS_ANIMATION_MS);
+      const eased = 1 - Math.pow(1 - progress, 3);
+      setPlatformUsers(Math.round(PLATFORM_USERS_TARGET * eased));
+      if (progress < 1) rafId = requestAnimationFrame(tick);
+    };
+    rafId = requestAnimationFrame(tick);
+    return () => {
+      if (rafId) cancelAnimationFrame(rafId);
+    };
+  }, []);
 
   useEffect(() => {
     const onScroll = () => {
@@ -167,6 +187,12 @@ export default function HomePage() {
               >
                 See How It Works
               </a>
+            </div>
+            <div className="hero-metrics" aria-label="Platform snapshot">
+              <div className="hero-metric">
+                <strong>{platformUsers.toLocaleString()}</strong>
+                <span>Users on platform</span>
+              </div>
             </div>
             <div
               className="hero-logo-marquee"
