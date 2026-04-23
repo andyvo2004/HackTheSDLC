@@ -10,16 +10,13 @@ import {
   useParams,
 } from "react-router-dom";
 import { motion } from "framer-motion";
-import {
-  CardElement,
-  Elements,
-  useElements,
-  useStripe,
-} from "@stripe/react-stripe-js";
+import { Elements } from "@stripe/react-stripe-js";
 import { loadStripe } from "@stripe/stripe-js";
 import { DistributionPanel } from "./components/DistributionPanel.jsx";
 import { getContrastColor } from "./utils/color.js";
 import ActivityFeed from "./components/ActivityFeed.jsx";
+import AchForm from "./components/AchForm.jsx";
+import CardWalletForm from "./components/CardWalletForm.jsx";
 import { supabase } from "./lib/supabaseClient.js";
 import HomePage from "./HomePage.jsx";
 import googleLogo from "./assets/google-logo.png";
@@ -40,7 +37,13 @@ async function apiRequest(path, { method = "GET", token, body } = {}) {
   });
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
-    const msg = payload.error || payload.message || "Request failed";
+    let msg = payload.error || payload.message || "Request failed";
+    if (payload.error === "Validation failed" && payload.details?.fieldErrors) {
+      const firstFieldError = Object.values(payload.details.fieldErrors)
+        .flat()
+        .find(Boolean);
+      if (firstFieldError) msg = firstFieldError;
+    }
     const err = new Error(msg);
     if (payload.code) err.code = payload.code;
     throw err;
@@ -170,19 +173,15 @@ function PaymentResultView({ result, onRetry }) {
   );
 }
 
-function PublicCheckoutForm({ slug, config, onResult }) {
-  const stripe = useStripe();
-  const elements = useElements();
+function CheckoutInfoForm({ slug, config, onIntentCreated }) {
   const [amount, setAmount] = useState(config.fixedAmount || 0);
   const [payerEmail, setPayerEmail] = useState("");
   const [payerName, setPayerName] = useState("");
   const [customResponses, setCustomResponses] = useState({});
-  const [achAuthorizationAccepted, setAchAuthorizationAccepted] =
-    useState(false);
+  const [paymentMethodType, setPaymentMethodType] = useState("card_wallet");
   const [fieldErrors, setFieldErrors] = useState({});
-  const [stripeError, setStripeError] = useState("");
+  const [errorMessage, setErrorMessage] = useState("");
   const [submitting, setSubmitting] = useState(false);
-  const stripeErrorRef = useRef(null);
 
   const validate = () => {
     const errors = {};
@@ -210,7 +209,7 @@ function PublicCheckoutForm({ slug, config, onResult }) {
     return errors;
   };
 
-  const submit = async (e) => {
+  const handleContinue = async (e) => {
     e.preventDefault();
     const errors = validate();
     if (Object.keys(errors).length > 0) {
@@ -223,83 +222,36 @@ function PublicCheckoutForm({ slug, config, onResult }) {
       return;
     }
     setFieldErrors({});
-    if (!stripe || !elements) return;
     setSubmitting(true);
-    setStripeError("");
+    setErrorMessage("");
     try {
-      const payload = await apiRequest(
-        `/public/pay/${slug}/create-payment-intent`,
-        {
-          method: "POST",
-          body: {
-            amount: Number(amount),
-            payerEmail,
-            payerName,
-            paymentMethod: "card",
-            fieldResponses: customResponses,
-            achAuthorizationAccepted,
-          },
-        },
-      );
-
-      const cardElement = elements.getElement(CardElement);
-      const confirmResult = await stripe.confirmCardPayment(
-        payload.clientSecret,
-        {
-          payment_method: {
-            card: cardElement,
-            billing_details: { email: payerEmail, name: payerName },
-          },
-        },
-      );
-      if (confirmResult.error) {
-        const msg = confirmResult.error.message || "Stripe confirmation failed";
-        setStripeError(msg);
-        setTimeout(() => stripeErrorRef.current?.focus(), 50);
-        throw new Error(msg);
-      }
-
-      const sync = await apiRequest(`/public/pay/${slug}/confirm`, {
+      const payload = await apiRequest(`/public/pay/${slug}/create-payment-intent`, {
         method: "POST",
-        body: { paymentIntentId: payload.paymentIntentId },
-      });
-
-      if (sync.status === "success") {
-        const msg = "Payment successful. Confirmation has been sent.";
-        onResult({
-          type: "success",
-          message: msg,
-          transactionId: sync.transactionId,
+        body: {
+          amount: Number(amount),
           payerEmail,
-          amount,
-        });
-      } else {
-        const msg = `Payment status: ${sync.status}. Please check transaction details.`;
-        onResult({
-          type: "failure",
-          message: msg,
-          transactionId: sync.transactionId,
-        });
-      }
+          payerName,
+          payment_method_type: paymentMethodType,
+          paymentMethod: paymentMethodType === "us_bank_account" ? "ach" : "card",
+          fieldResponses: customResponses,
+        },
+      });
+      onIntentCreated({
+        clientSecret: payload.clientSecret,
+        paymentIntentId: payload.paymentIntentId,
+        transactionId: payload.transactionId,
+        paymentMethodType,
+        amountInCents: Math.round(Number(amount) * 100),
+      });
     } catch (err) {
-      if (!stripeError) {
-        const msg = `Payment failed: ${err.message}`;
-        setStripeError(msg);
-        setTimeout(() => stripeErrorRef.current?.focus(), 50);
-        onResult({ type: "failure", message: msg });
-      }
+      setErrorMessage(err.message);
     } finally {
       setSubmitting(false);
     }
   };
 
   return (
-    <form
-      className="public-form"
-      onSubmit={submit}
-      noValidate
-      aria-label="Payment form"
-    >
+    <form className="public-form" onSubmit={handleContinue} noValidate aria-label="Payment form">
       <p className="required-note">* Required fields</p>
       <fieldset className="form-fieldset">
         <legend>Your Information</legend>
@@ -495,45 +447,84 @@ function PublicCheckoutForm({ slug, config, onResult }) {
       )}
 
       <fieldset className="form-fieldset">
-        <legend>Payment Details</legend>
-        <div className="checkbox-group">
-          <input
-            id="ach-auth"
-            type="checkbox"
-            checked={achAuthorizationAccepted}
-            onChange={(e) => setAchAuthorizationAccepted(e.target.checked)}
-          />
-          <label htmlFor="ach-auth">
-            I authorize bank transfer payment processing if ACH is selected.
-          </label>
-        </div>
-        <p id="card-element-label" className="card-label">
-          Card Details *
-        </p>
-        <div className="stripe-box" aria-labelledby="card-element-label">
-          <CardElement options={{ hidePostalCode: false }} />
-        </div>
-        {stripeError && (
-          <p
-            ref={stripeErrorRef}
-            className="field-error"
-            role="alert"
-            aria-live="assertive"
-            tabIndex={-1}
+        <legend>Payment Method</legend>
+        <div className="payment-method-tabs" role="tablist">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={paymentMethodType === "card_wallet"}
+            className={paymentMethodType === "card_wallet" ? "active" : ""}
+            onClick={() => setPaymentMethodType("card_wallet")}
           >
-            {stripeError}
-          </p>
-        )}
+            💳 Card &amp; Digital Wallet
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={paymentMethodType === "us_bank_account"}
+            className={paymentMethodType === "us_bank_account" ? "active" : ""}
+            onClick={() => setPaymentMethodType("us_bank_account")}
+          >
+            🏦 Bank Transfer (ACH)
+          </button>
+        </div>
       </fieldset>
 
-      <button
-        type="submit"
-        className="pay-btn"
-        disabled={submitting || !stripe || !elements}
-      >
-        {submitting ? "Processing..." : "Complete payment"}
+      {errorMessage && (
+        <div className="error-banner" role="alert">{errorMessage}</div>
+      )}
+
+      <button type="submit" className="pay-btn" disabled={submitting}>
+        {submitting ? "Processing..." : "Continue to Payment"}
       </button>
     </form>
+  );
+}
+
+function PaymentStepForm({ slug, intentData, onResult }) {
+  const [errorMessage, setErrorMessage] = useState(null);
+
+  const handleSuccess = async () => {
+    try {
+      const sync = await apiRequest(`/public/pay/${slug}/confirm`, {
+        method: "POST",
+        body: { paymentIntentId: intentData.paymentIntentId },
+      });
+      if (sync.status === "success") {
+        onResult({
+          type: "success",
+          message: "Payment successful. Confirmation has been sent.",
+          transactionId: sync.transactionId,
+        });
+      } else {
+        onResult({
+          type: "failure",
+          message: `Payment status: ${sync.status}. Please check transaction details.`,
+          transactionId: sync.transactionId,
+        });
+      }
+    } catch (err) {
+      onResult({ type: "failure", message: err.message });
+    }
+  };
+
+  return (
+    <div className="payment-container">
+      {errorMessage && (
+        <div className="error-banner" role="alert">{errorMessage}</div>
+      )}
+      <div role="tabpanel">
+        {intentData.paymentMethodType === "card_wallet" ? (
+          <CardWalletForm onSuccess={handleSuccess} onError={setErrorMessage} />
+        ) : (
+          <AchForm
+            amount={intentData.amountInCents}
+            onSuccess={handleSuccess}
+            onError={setErrorMessage}
+          />
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -543,6 +534,7 @@ function PublicPaymentPage() {
   const [result, setResult] = useState(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
+  const [intentData, setIntentData] = useState(null);
 
   useEffect(() => {
     async function load() {
@@ -580,6 +572,11 @@ function PublicPaymentPage() {
 
   const headerTextColor = getContrastColor(config.brandColor);
 
+  const handleRetry = () => {
+    setResult(null);
+    setIntentData(null);
+  };
+
   return (
     <main className="public-shell">
       <section className="public-card">
@@ -611,50 +608,18 @@ function PublicPaymentPage() {
             {config.headerMessage || "Complete secure payment below."}
           </div>
           {result ? (
-            <PaymentResultView
-              result={result}
-              onRetry={() => setResult(null)}
-            />
-          ) : STRIPE_KEY && stripePromise ? (
-            <>
-              <div
-                className="wallet-bar"
-                role="group"
-                aria-label="Express checkout options"
-              >
-                <button
-                  type="button"
-                  className="wallet-btn"
-                  disabled
-                  title="Apple Pay not available in this environment"
-                >
-                  Apple Pay
-                </button>
-                <button
-                  type="button"
-                  className="wallet-btn"
-                  disabled
-                  title="Google Pay not available in this environment"
-                >
-                  G Pay
-                </button>
-              </div>
-              <div className="wallet-divider" aria-hidden="true">
-                <span>or pay with card</span>
-              </div>
-              <Elements stripe={stripePromise}>
-                <PublicCheckoutForm
-                  slug={slug}
-                  config={config}
-                  onResult={setResult}
-                />
-              </Elements>
-            </>
-          ) : (
+            <PaymentResultView result={result} onRetry={handleRetry} />
+          ) : !STRIPE_KEY || !stripePromise ? (
             <p className="error">
               Missing Stripe publishable key. Set `VITE_STRIPE_PUBLISHABLE_KEY`
               in your frontend environment.
             </p>
+          ) : !intentData ? (
+            <CheckoutInfoForm slug={slug} config={config} onIntentCreated={setIntentData} />
+          ) : (
+            <Elements stripe={stripePromise} options={{ clientSecret: intentData.clientSecret }}>
+              <PaymentStepForm slug={slug} intentData={intentData} onResult={setResult} />
+            </Elements>
           )}
           {config.footerMessage && (
             <footer className="public-footer">{config.footerMessage}</footer>

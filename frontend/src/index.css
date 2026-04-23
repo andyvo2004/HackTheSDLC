@@ -1118,6 +1118,36 @@ textarea {
   padding: 0 0.4rem;
 }
 
+.payment-method-tabs {
+  display: flex;
+  margin-bottom: 20px;
+  border-bottom: 2px solid var(--color-border, #e2e8f0);
+}
+
+.payment-method-tabs button {
+  flex: 1;
+  padding: 10px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -2px;
+  font-size: 0.9rem;
+  color: inherit;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.payment-method-tabs button:focus-visible {
+  outline: 3px solid #2563eb;
+  outline-offset: 2px;
+}
+
+.payment-method-tabs button.active {
+  border-bottom: 2px solid var(--color-accent, #0f63ff);
+  color: var(--color-accent, #0f63ff);
+  font-weight: bold;
+}
+
 .pay-btn {
   width: 100%;
   padding: 0.875rem;
