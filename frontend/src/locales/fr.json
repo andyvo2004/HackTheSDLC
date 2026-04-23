@@ -61,5 +61,12 @@
   "statusValue_pending": "En attente",
   "statusValue_processing": "Traitement",
   "statusValue_canceled": "Annule",
-  "statusValue_requires_action": "Action requise"
+  "statusValue_requires_action": "Action requise",
+  "amount": "Montant",
+  "status": "Statut",
+  "method": "Methode",
+  "payer": "Payeur",
+  "created": "Cree le",
+  "allStatuses": "Tous les statuts",
+  "allMethods": "Toutes les methodes"
 }

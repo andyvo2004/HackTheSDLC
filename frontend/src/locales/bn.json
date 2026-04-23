@@ -61,5 +61,12 @@
   "statusValue_pending": "অপেক্ষমাণ",
   "statusValue_processing": "প্রসেসিং",
   "statusValue_canceled": "বাতিল",
-  "statusValue_requires_action": "অ্যাকশন প্রয়োজন"
+  "statusValue_requires_action": "অ্যাকশন প্রয়োজন",
+  "amount": "পরিমাণ",
+  "status": "স্ট্যাটাস",
+  "method": "পদ্ধতি",
+  "payer": "পেয়ার",
+  "created": "তৈরির সময়",
+  "allStatuses": "সব স্ট্যাটাস",
+  "allMethods": "সব পদ্ধতি"
 }
