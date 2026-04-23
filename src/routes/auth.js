@@ -177,9 +177,17 @@ authRouter.post("/signup", async (req, res, next) => {
       throw err;
     }
 
+    const identities = Array.isArray(supabaseUser?.identities) ? supabaseUser.identities : null;
+    if (identities && identities.length === 0) {
+      return res.status(409).json({
+        error: "An account with this email already exists. Please sign in instead.",
+      });
+    }
+
     if (!supabaseUser?.id) {
-      return res.status(502).json({
-        error: "Supabase signup did not return a user. Please try again.",
+      return res.status(202).json({
+        message:
+          "Signup accepted. Please check your email to confirm your account before signing in.",
       });
     }
 
@@ -195,6 +203,16 @@ authRouter.post("/signup", async (req, res, next) => {
       localPasswordHash,
       user.id,
     ]);
+
+    const supabaseAuth = await supabasePasswordSignIn(normalizedEmail, password);
+    if (supabaseAuth?.user) {
+      const token = signToken({ sub: user.id, email: user.email, role: user.role });
+      return res.status(201).json({
+        token,
+        user,
+        message: "Account created successfully.",
+      });
+    }
 
     return res.status(201).json({
       message: "Account created successfully. You can now sign in.",

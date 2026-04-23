@@ -671,7 +671,7 @@ function AuthPage({ mode }) {
     if (!loginForm.email.trim()) throw new Error("Email address is required.");
     if (!loginForm.password.trim()) throw new Error("Password is required.");
 
-    await apiRequest("/auth/signup", {
+    const signupResponse = await apiRequest("/auth/signup", {
       method: "POST",
       body: {
         companyName: companyName.trim(),
@@ -683,6 +683,7 @@ function AuthPage({ mode }) {
     setCompanyName("");
     setCompanyLogoDataUrl("");
     setLoginForm({ email: "", password: "" });
+    return signupResponse;
   };
 
   const handleLogin = async (e) => {
@@ -710,10 +711,13 @@ function AuthPage({ mode }) {
     setError("");
     setAuthNotice("");
     try {
-      await createCompanyAccount();
-      setAuthNotice(
-        "Account created successfully. You can now sign in.",
-      );
+      const signupResponse = await createCompanyAccount();
+      if (signupResponse?.token) {
+        localStorage.setItem("qpp_token", signupResponse.token);
+        navigate("/dashboard", { replace: true });
+        return;
+      }
+      setAuthNotice(signupResponse?.message || "Account created successfully. You can now sign in.");
     } catch (err) {
       setError(err.message);
     } finally {
@@ -727,10 +731,13 @@ function AuthPage({ mode }) {
     setAuthNotice("");
     try {
       if (isSignup) {
-        await createCompanyAccount();
-        setAuthNotice(
-          "Account created successfully. You can now sign in.",
-        );
+        const signupResponse = await createCompanyAccount();
+        if (signupResponse?.token) {
+          localStorage.setItem("qpp_token", signupResponse.token);
+          navigate("/dashboard", { replace: true });
+          return;
+        }
+        setAuthNotice(signupResponse?.message || "Account created successfully. You can now sign in.");
         return;
       }
       const { error: oauthError } = await supabase.auth.signInWithOAuth({
