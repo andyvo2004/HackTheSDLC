@@ -6,6 +6,7 @@ import { DistributionPanel } from "./components/DistributionPanel.jsx";
 import { getContrastColor } from "./utils/color.js";
 import ActivityFeed from "./components/ActivityFeed.jsx";
 import { LanguageProvider, LANGUAGE_OPTIONS, useI18n } from "./i18n.js";
+import { localizeSeededText } from "./utils/localizeSeededText.js";
 
 const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:4000";
 const STRIPE_KEY = import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY || "";
@@ -61,6 +62,7 @@ function MiniAreaChart({ values }) {
 }
 
 function MethodBars({ items }) {
+  const { t } = useI18n();
   const max = Math.max(...items.map((m) => Number(m.totalAmount || 0)), 1);
   return (
     <div className="method-bars">
@@ -69,7 +71,7 @@ function MethodBars({ items }) {
         return (
           <div key={item.method} className="method-row">
             <div className="method-meta">
-              <span>{item.method}</span>
+              <span>{t(`paymentMethod_${String(item.method || "").toLowerCase()}`, { defaultValue: item.method })}</span>
               <strong>${Number(item.totalAmount || 0).toLocaleString()}</strong>
             </div>
             <div className="bar-track">
@@ -465,6 +467,10 @@ function PublicPaymentPage() {
   }
 
   const headerTextColor = getContrastColor(config.brandColor);
+  const localizedTitle = localizeSeededText(config.title, t);
+  const localizedSubtitle = localizeSeededText(config.subtitle, t);
+  const localizedHeaderMessage = localizeSeededText(config.headerMessage, t);
+  const localizedFooterMessage = localizeSeededText(config.footerMessage, t);
 
   return (
     <main className="public-shell">
@@ -473,17 +479,17 @@ function PublicPaymentPage() {
           {config.logoUrl && (
             <img
               src={config.logoUrl}
-              alt={`${config.title} logo`}
+              alt={`${localizedTitle} logo`}
               className="public-logo"
               onError={(e) => { e.target.style.display = "none"; }}
             />
           )}
-          <h1>{config.title}</h1>
-          {config.subtitle && <p className="public-subtitle">{config.subtitle}</p>}
+          <h1>{localizedTitle}</h1>
+          {localizedSubtitle && <p className="public-subtitle">{localizedSubtitle}</p>}
         </header>
         <div className="public-body">
           {config.description && <p className="subtle">{config.description}</p>}
-          <div className="preview-banner">{config.headerMessage || t("completeSecurePaymentBelow")}</div>
+          <div className="preview-banner">{localizedHeaderMessage || t("completeSecurePaymentBelow")}</div>
           {result ? (
             <PaymentResultView result={result} onRetry={() => setResult(null)} />
           ) : STRIPE_KEY && stripePromise ? (
@@ -502,7 +508,7 @@ function PublicPaymentPage() {
               {t("missingStripeKey")}
             </p>
           )}
-          {config.footerMessage && <footer className="public-footer">{config.footerMessage}</footer>}
+          {localizedFooterMessage && <footer className="public-footer">{localizedFooterMessage}</footer>}
         </div>
       </section>
     </main>
@@ -790,6 +796,19 @@ function AdminApp() {
     () => ["all", ...new Set(transactions.map((txn) => txn.paymentMethod).filter(Boolean))],
     [transactions],
   );
+  const translateMethod = (method) => {
+    const normalized = String(method || "").toLowerCase();
+    return t(`paymentMethod_${normalized}`, { defaultValue: method });
+  };
+  const translateStatus = (status) => {
+    const normalized = String(status || "").toLowerCase();
+    return t(`statusValue_${normalized}`, { defaultValue: status });
+  };
+  const translateAmountMode = (amountMode) => {
+    if (amountMode === "user_entered") return t("userEntered");
+    return t(amountMode, { defaultValue: amountMode });
+  };
+  const localizePageText = (text) => localizeSeededText(text, t);
 
   if (!token) {
     return (
@@ -845,7 +864,7 @@ function AdminApp() {
     <div className="app-shell">
       <aside className="sidebar">
         <h2>{t("waystarQpp")}</h2>
-        <p className="role-pill">{user?.role || "viewer"}</p>
+        <p className="role-pill">{t(`role_${user?.role || "viewer"}`, { defaultValue: user?.role || t("viewer") })}</p>
         <div className="brand-mark" aria-hidden="true">
           <span />
           <span />
@@ -1067,14 +1086,18 @@ function AdminApp() {
                           <button
                             className="tiny-btn"
                             onClick={() => handleCopy(page.id)}
-                            aria-label={`${t("copyUrl")} for ${page.title}`}
+                            aria-label={t("ariaCopyUrlForTitle", { title: localizePageText(page.title) })}
                           >
                             {t("copyUrl")}
                           </button>
                           <button
                             className={`tiny-btn${selectedPage?.id === page.id ? " active" : ""}`}
                             onClick={() => setSelectedPage(selectedPage?.id === page.id ? null : page)}
-                            aria-label={selectedPage?.id === page.id ? `${t("close")} distribution panel for ${page.title}` : `${t("distribute")} ${page.title}`}
+                            aria-label={
+                              selectedPage?.id === page.id
+                                ? t("ariaCloseDistributionPanelForTitle", { title: localizePageText(page.title) })
+                                : t("ariaDistributeTitle", { title: localizePageText(page.title) })
+                            }
                             aria-expanded={selectedPage?.id === page.id}
                           >
                             {selectedPage?.id === page.id ? t("close") : t("distribute")}
@@ -1084,14 +1107,18 @@ function AdminApp() {
                               <button
                                 className="tiny-btn"
                                 onClick={() => handleToggleStatus(page.id, page.isActive)}
-                                aria-label={page.isActive ? `${t("disable")} ${page.title}` : `${t("enable")} ${page.title}`}
+                                aria-label={
+                                  page.isActive
+                                    ? t("ariaDisableTitle", { title: localizePageText(page.title) })
+                                    : t("ariaEnableTitle", { title: localizePageText(page.title) })
+                                }
                               >
                                 {page.isActive ? t("disable") : t("enable")}
                               </button>
                               <button
                                 className="tiny-btn"
                                 onClick={() => fetchVersions(page.id)}
-                                aria-label={`${t("viewVersionsFor")} ${page.title}`}
+                                aria-label={t("ariaViewVersionsForTitle", { title: localizePageText(page.title) })}
                               >
                                 {t("versions")}
                               </button>
@@ -1099,7 +1126,7 @@ function AdminApp() {
                                 <button
                                   className="tiny-btn"
                                   onClick={() => publishDraft(page.id)}
-                                  aria-label={`${t("publishDraftFor")} ${page.title}`}
+                                  aria-label={t("ariaPublishDraftForTitle", { title: localizePageText(page.title) })}
                                 >
                                   {t("publishDraft")}
                                 </button>
@@ -1107,7 +1134,7 @@ function AdminApp() {
                               <button
                                 className="tiny-btn"
                                 onClick={() => rollbackLatest(page.id)}
-                                aria-label={`${t("rollbackPageToPrevious")} ${page.title}`}
+                                aria-label={t("ariaRollbackPageToPreviousTitle", { title: localizePageText(page.title) })}
                               >
                                 {t("rollback")}
                               </button>
@@ -1118,14 +1145,14 @@ function AdminApp() {
 
                       return (
                       <tr key={page.id}>
-                        <td>{page.title}</td>
+                        <td>{localizePageText(page.title)}</td>
                         <td>/{page.slug}</td>
                         <td>
                           <span className={`status-badge ${page.isActive ? "status-badge--active" : "status-badge--disabled"}`}>
                             {page.isActive ? t("active") : t("disabled")}
                           </span>
                         </td>
-                        <td>{page.amountMode}</td>
+                        <td>{translateAmountMode(page.amountMode)}</td>
                         <td className="page-actions-cell">
                           <div className="page-actions-desktop">{actionButtons}</div>
                           <div className="page-actions-mobile">
@@ -1133,7 +1160,7 @@ function AdminApp() {
                               className="tiny-btn mobile-actions-trigger"
                               onClick={() => setMobileActionsPageId((prev) => (prev === page.id ? null : page.id))}
                               aria-expanded={mobileActionsPageId === page.id}
-                              aria-label={`${t("moreActions")} ${page.title}`}
+                              aria-label={t("ariaMoreActionsTitle", { title: localizePageText(page.title) })}
                             >
                               {mobileActionsPageId === page.id ? t("hideActions") : t("moreActions")}
                             </button>
@@ -1163,8 +1190,8 @@ function AdminApp() {
             </section>
             {selectedPage && (
               <section className="panel">
-              <h3>{t("distributePanelTitle", { title: selectedPage.title })}</h3>
-                <DistributionPanel pageSlug={selectedPage.slug} pageTitle={selectedPage.title} />
+              <h3>{t("distributePanelTitle", { title: localizePageText(selectedPage.title) })}</h3>
+                <DistributionPanel pageSlug={selectedPage.slug} pageTitle={localizePageText(selectedPage.title)} />
               </section>
             )}
             </>
@@ -1357,14 +1384,14 @@ function AdminApp() {
                       className="tiny-btn"
                       onClick={() => moveBuilderField(idx, "up")}
                       disabled={idx === 0}
-                      aria-label={`${t("moveUp")} ${field.label || `field ${idx + 1}`}`}
+                      aria-label={`${t("moveUp")} ${field.label || t("fieldN", { count: idx + 1 })}`}
                     >↑</button>
                     <button
                       type="button"
                       className="tiny-btn"
                       onClick={() => moveBuilderField(idx, "down")}
                       disabled={idx === customFieldsBuilder.length - 1}
-                      aria-label={`${t("moveDown")} ${field.label || `field ${idx + 1}`}`}
+                      aria-label={`${t("moveDown")} ${field.label || t("fieldN", { count: idx + 1 })}`}
                     >↓</button>
                     <button
                       type="button"
@@ -1438,7 +1465,7 @@ function AdminApp() {
                     <input readOnly value={`$${Number(pageForm.fixedAmount || 0).toFixed(2)}`} />
                   </label>
                   <label>
-                    Email
+                    {t("email")}
                     <input readOnly value={t("payerEmailExample")} />
                   </label>
                   <button type="button">{t("payNow")}</button>
@@ -1469,7 +1496,7 @@ function AdminApp() {
                   >
                     {transactionStatuses.map((status) => (
                       <option key={status} value={status}>
-                        {status === "all" ? t("allStatuses") : status}
+                        {status === "all" ? t("allStatuses") : translateStatus(status)}
                       </option>
                     ))}
                   </select>
@@ -1482,7 +1509,7 @@ function AdminApp() {
                   >
                     {transactionMethods.map((method) => (
                       <option key={method} value={method}>
-                        {method === "all" ? t("allMethods") : method}
+                        {method === "all" ? t("allMethods") : translateMethod(method)}
                       </option>
                     ))}
                   </select>
@@ -1514,10 +1541,10 @@ function AdminApp() {
                         <td>${Number(txn.amount).toFixed(2)}</td>
                         <td>
                           <span className={`status-badge status-badge--${txn.status || "pending"}`}>
-                            {txn.status}
+                            {translateStatus(txn.status || "pending")}
                           </span>
                         </td>
-                        <td>{txn.paymentMethod}</td>
+                        <td>{translateMethod(txn.paymentMethod)}</td>
                         <td>{txn.payerEmail || t("notAvailable")}</td>
                         <td>{new Date(txn.createdAt).toLocaleString()}</td>
                       </tr>

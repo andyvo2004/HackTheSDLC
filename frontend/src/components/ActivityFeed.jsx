@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { useI18n } from "../i18n.js";
+import { localizeSeededText } from "../utils/localizeSeededText.js";
 
 const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:4000";
 
@@ -118,9 +119,9 @@ export default function ActivityFeed({ authToken }) {
                 <span className="feed-icon-chip" />
               </span>
               <div className="feed-content">
-                <strong>{event.payer_name}</strong> paid{" "}
+                <strong>{event.payer_name}</strong> {t("paid")}{" "}
                 <strong>{formatAmount(event.amount, event.currency)}</strong>
-                <span className="feed-page"> {t("paidOn", { page: event.page_title })}</span>
+                <span className="feed-page"> {t("paidOn", { page: localizeSeededText(event.page_title, t) })}</span>
               </div>
               <time className="feed-time" dateTime={event.created_at}>
                 {timeAgo(event.created_at)}
