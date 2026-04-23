@@ -119,15 +119,11 @@ body.light-mode {
 }
 
 .google-icon {
-  width: 22px;
-  height: 22px;
-  border-radius: 999px;
-  display: inline-grid;
-  place-items: center;
-  background: #fff;
-  border: 1px solid #cfe0ff;
-  color: #0f63ff;
-  font-size: 0.8rem;
+  width: 20px;
+  height: 20px;
+  display: inline-block;
+  object-fit: contain;
+  flex-shrink: 0;
 }
 
 .auth-switch-row {

@@ -9,7 +9,7 @@ import {
   useNavigate,
   useParams,
 } from "react-router-dom";
-import { AnimatePresence, motion } from "framer-motion";
+import { motion } from "framer-motion";
 import {
   CardElement,
   Elements,
@@ -22,6 +22,7 @@ import { getContrastColor } from "./utils/color.js";
 import ActivityFeed from "./components/ActivityFeed.jsx";
 import { supabase } from "./lib/supabaseClient.js";
 import HomePage from "./HomePage.jsx";
+import googleLogo from "./assets/google-logo.png";
 
 const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:4000";
 const STRIPE_KEY = import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY || "";
@@ -905,9 +906,7 @@ function AuthPage({ mode }) {
             onClick={handleGoogleAuth}
             disabled={loading}
           >
-            <span className="google-icon" aria-hidden="true">
-              G
-            </span>
+            <img src={googleLogo} alt="" className="google-icon" aria-hidden="true" />
             Continue with Google
           </button>
         )}
@@ -1932,24 +1931,21 @@ function AnimatedAppRoutes() {
   const location = useLocation();
 
   return (
-    <AnimatePresence mode="wait" initial={false}>
-      <motion.div
-        key={location.pathname}
-        initial={{ opacity: 0, y: 10 }}
-        animate={{ opacity: 1, y: 0 }}
-        exit={{ opacity: 0, y: -10 }}
-        transition={{ duration: 0.24, ease: "easeOut" }}
-      >
-        <Routes location={location}>
-          <Route path="/" element={<HomePage />} />
-          <Route path="/dashboard" element={<AdminApp />} />
-          <Route path="/login" element={<AuthPage mode="login" />} />
-          <Route path="/signup" element={<AuthPage mode="signup" />} />
-          <Route path="/pay/:slug" element={<PublicPaymentPage />} />
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
-      </motion.div>
-    </AnimatePresence>
+    <motion.div
+      key={location.pathname}
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.22, ease: "easeOut" }}
+    >
+      <Routes location={location}>
+        <Route path="/" element={<HomePage />} />
+        <Route path="/dashboard" element={<AdminApp />} />
+        <Route path="/login" element={<AuthPage mode="login" />} />
+        <Route path="/signup" element={<AuthPage mode="signup" />} />
+        <Route path="/pay/:slug" element={<PublicPaymentPage />} />
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </motion.div>
   );
 }
 
