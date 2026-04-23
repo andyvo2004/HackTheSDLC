@@ -6,6 +6,7 @@ import { DistributionPanel } from "./components/DistributionPanel.jsx";
 import { getContrastColor } from "./utils/color.js";
 import ActivityFeed from "./components/ActivityFeed.jsx";
 import { supabase } from "./lib/supabaseClient.js";
+import HomePage from "./HomePage.jsx";
 
 const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:4000";
 const STRIPE_KEY = import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY || "";
@@ -1543,7 +1544,8 @@ function App() {
   return (
     <BrowserRouter>
       <Routes>
-        <Route path="/" element={<AdminApp />} />
+        <Route path="/" element={<HomePage />} />
+        <Route path="/dashboard" element={<AdminApp />} />
         <Route path="/login" element={<AuthPage mode="login" />} />
         <Route path="/signup" element={<AuthPage mode="signup" />} />
         <Route path="/pay/:slug" element={<PublicPaymentPage />} />
