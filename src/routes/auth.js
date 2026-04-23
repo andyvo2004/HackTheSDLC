@@ -8,8 +8,6 @@ import { requireAuth } from "../middleware/requireAuth.js";
 export const authRouter = Router();
 const SUPABASE_PASSWORD_MARKER = "__supabase_managed__";
 const DEFAULT_COMPANY_ROLE = "owner";
-const SUPER_ADMIN_USERNAME = process.env.SUPER_ADMIN_USERNAME || "admin";
-const SUPER_ADMIN_PASSWORD = process.env.SUPER_ADMIN_PASSWORD || "superadmin";
 
 const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
 const supabaseApiKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY;
@@ -29,15 +27,19 @@ async function supabasePasswordSignIn(email, password) {
   return response.json();
 }
 
-async function supabaseSignUp(email, password) {
+async function supabaseSignUp(email, password, metadata = null) {
   if (!hasSupabaseConfig) return null;
+  const body = { email, password };
+  if (metadata && typeof metadata === "object") {
+    body.data = metadata;
+  }
   const response = await fetch(`${supabaseUrl}/auth/v1/signup`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       apikey: supabaseApiKey,
     },
-    body: JSON.stringify({ email, password }),
+    body: JSON.stringify(body),
   });
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
@@ -93,13 +95,6 @@ async function fetchSupabaseUserFromAccessToken(accessToken) {
   return response.json();
 }
 
-function requireSuperAdmin(req, res, next) {
-  if (req.user?.role !== "super_admin") {
-    return res.status(403).json({ error: "Super admin access required" });
-  }
-  return next();
-}
-
 authRouter.post("/login", async (req, res, next) => {
   try {
     const { email, password } = req.body || {};
@@ -108,47 +103,26 @@ authRouter.post("/login", async (req, res, next) => {
       return res.status(400).json({ error: "Email and password are required" });
     }
 
-    if (loginIdentifier === SUPER_ADMIN_USERNAME && password === SUPER_ADMIN_PASSWORD) {
-      const token = signToken({
-        sub: "super_admin",
-        email: SUPER_ADMIN_USERNAME,
-        role: "super_admin",
-      });
-      return res.json({
-        token,
-        user: { id: "super_admin", email: SUPER_ADMIN_USERNAME, role: "super_admin" },
-      });
-    }
-
     const normalizedEmail = loginIdentifier.toLowerCase();
-    const user = await db.get("SELECT * FROM admin_users WHERE email = ?", [normalizedEmail]);
-    let resolvedUser = null;
-
-    if (user && user.password_hash !== SUPABASE_PASSWORD_MARKER) {
-      const ok = await bcrypt.compare(password, user.password_hash);
-      if (!ok) return res.status(401).json({ error: "Invalid credentials" });
-      resolvedUser = { id: user.id, email: user.email, role: user.role || "owner" };
+    const supabaseAuth = await supabasePasswordSignIn(normalizedEmail, password);
+    if (!supabaseAuth?.user) return res.status(401).json({ error: "Invalid credentials" });
+    const normalizedSupabaseEmail = (supabaseAuth.user.email || normalizedEmail).toLowerCase();
+    let resolvedUser = await db.get("SELECT id, email, role FROM admin_users WHERE email = ?", [
+      normalizedSupabaseEmail,
+    ]);
+    if (!resolvedUser) {
+      resolvedUser = await ensureLocalUser({
+        email: normalizedSupabaseEmail,
+        supabaseUserId: supabaseAuth.user.id,
+        role: DEFAULT_COMPANY_ROLE,
+        companyName: supabaseAuth.user.user_metadata?.company_name || null,
+        companyLogoUrl: supabaseAuth.user.user_metadata?.company_logo_url || null,
+      });
     } else {
-      const supabaseAuth = await supabasePasswordSignIn(normalizedEmail, password);
-      if (!supabaseAuth?.user) return res.status(401).json({ error: "Invalid credentials" });
-      const existingSupabaseUser = await db.get("SELECT id, email, role FROM admin_users WHERE email = ?", [
-        (supabaseAuth.user.email || normalizedEmail).toLowerCase(),
-      ]);
-      if (!existingSupabaseUser) {
-        const pending = await db.get(
-          "SELECT id FROM company_account_requests WHERE email = ? AND status = 'pending'",
-          [(supabaseAuth.user.email || normalizedEmail).toLowerCase()],
-        );
-        return res.status(403).json({
-          error: pending
-            ? "Your account request is pending super admin approval."
-            : "No approved company account found.",
-        });
-      }
       resolvedUser = {
-        id: existingSupabaseUser.id,
-        email: existingSupabaseUser.email,
-        role: existingSupabaseUser.role || "viewer",
+        id: resolvedUser.id,
+        email: resolvedUser.email,
+        role: resolvedUser.role || "viewer",
       };
     }
 
@@ -169,43 +143,61 @@ authRouter.post("/signup", async (req, res, next) => {
       companyLogoUrl,
       email,
       password,
-      authMethod = "password",
     } = req.body || {};
     if (!companyName || !companyLogoUrl || !email || !password) {
       return res.status(400).json({
         error: "Company name, company logo, email, and password are required",
       });
     }
-    const normalizedEmail = email.trim().toLowerCase();
-    const existingPending = await db.get(
-      "SELECT id FROM company_account_requests WHERE email = ? AND status = 'pending'",
-      [normalizedEmail],
-    );
-    if (existingPending) {
-      return res.status(409).json({ error: "A pending request already exists for this email." });
+    if (!hasSupabaseConfig) {
+      return res.status(500).json({ error: "Supabase auth is not configured on the backend" });
     }
-    await db.run("DELETE FROM company_account_requests WHERE email = ?", [normalizedEmail]);
+    const normalizedEmail = email.trim().toLowerCase();
+    let supabaseUser = null;
+    try {
+      const signupPayload = await supabaseSignUp(normalizedEmail, password, {
+        account_type: "company",
+        company_name: companyName.trim(),
+        company_logo_url: companyLogoUrl,
+      });
+      supabaseUser = signupPayload?.user || null;
+    } catch (err) {
+      const message = String(err?.message || "");
+      if (message.toLowerCase().includes("already registered")) {
+        return res.status(409).json({
+          error: "An account with this email already exists. Please sign in instead.",
+        });
+      }
+      if (message.toLowerCase().includes("rate limit")) {
+        return res.status(429).json({
+          error:
+            "Signup rate limit reached. Please wait a minute before creating another account.",
+        });
+      }
+      throw err;
+    }
 
-    const now = new Date().toISOString();
-    const requestId = uuidv4();
-    await db.run(
-      `INSERT INTO company_account_requests
-       (id, company_name, company_logo_url, email, password_hash, plain_password, auth_method, status, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?)`,
-      [
-        requestId,
-        companyName.trim(),
-        companyLogoUrl,
-        normalizedEmail,
-        password,
-        password,
-        authMethod,
-        now,
-      ],
-    );
+    if (!supabaseUser?.id) {
+      return res.status(502).json({
+        error: "Supabase signup did not return a user. Please try again.",
+      });
+    }
+
+    const user = await ensureLocalUser({
+      email: supabaseUser?.email || normalizedEmail,
+      supabaseUserId: supabaseUser?.id,
+      role: DEFAULT_COMPANY_ROLE,
+      companyName: companyName.trim(),
+      companyLogoUrl,
+    });
+    const localPasswordHash = await bcrypt.hash(password, 10);
+    await db.run("UPDATE admin_users SET password_hash = ? WHERE id = ?", [
+      localPasswordHash,
+      user.id,
+    ]);
 
     return res.status(201).json({
-      message: "Request submitted. A super admin must approve this account before login.",
+      message: "Account created successfully. You can now sign in.",
     });
   } catch (err) {
     next(err);
@@ -237,115 +229,22 @@ authRouter.post("/supabase/exchange", async (req, res, next) => {
       });
     }
 
-    return res.status(403).json({
-      error: "Account pending approval or not found.",
-      code: "APPROVAL_REQUIRED",
+    const newUser = await ensureLocalUser({
+      email: supabaseUser.email,
+      supabaseUserId: supabaseUser.id,
+      role: DEFAULT_COMPANY_ROLE,
+      companyName: supabaseUser.user_metadata?.company_name || null,
+      companyLogoUrl: supabaseUser.user_metadata?.company_logo_url || null,
     });
+    const token = signToken({ sub: newUser.id, email: newUser.email, role: newUser.role });
+    return res.status(201).json({ token, user: newUser });
   } catch (err) {
     next(err);
   }
 });
-
-authRouter.get("/company-requests", requireAuth, requireSuperAdmin, async (_req, res, next) => {
-  try {
-    const requests = await db.all(
-      `SELECT id, company_name, company_logo_url, email, auth_method, status, created_at
-       FROM company_account_requests
-       WHERE status = 'pending'
-       ORDER BY created_at ASC`,
-    );
-    return res.json(
-      requests.map((row) => ({
-        id: row.id,
-        companyName: row.company_name,
-        companyLogoUrl: row.company_logo_url,
-        email: row.email,
-        authMethod: row.auth_method,
-        status: row.status,
-        createdAt: row.created_at,
-      })),
-    );
-  } catch (err) {
-    next(err);
-  }
-});
-
-authRouter.post(
-  "/company-requests/:id/approve",
-  requireAuth,
-  requireSuperAdmin,
-  async (req, res, next) => {
-    try {
-      const request = await db.get(
-        "SELECT * FROM company_account_requests WHERE id = ? AND status = 'pending'",
-        [req.params.id],
-      );
-      if (!request) {
-        return res.status(404).json({ error: "Pending request not found" });
-      }
-      if (!hasSupabaseConfig) {
-        return res.status(500).json({ error: "Supabase auth is not configured on the backend" });
-      }
-
-      let supabaseUser = null;
-      let approvalWarning = "";
-      try {
-        const signupPayload = await supabaseSignUp(
-          request.email,
-          request.plain_password || request.password_hash,
-        );
-        supabaseUser = signupPayload?.user || null;
-      } catch (err) {
-        const message = String(err?.message || "");
-        if (
-          message.toLowerCase().includes("rate limit") ||
-          message.toLowerCase().includes("already registered")
-        ) {
-          approvalWarning =
-            "Supabase user provisioning was skipped due to provider limits. Local access is active.";
-        } else {
-          throw err;
-        }
-      }
-      const user = await ensureLocalUser({
-        email: supabaseUser?.email || request.email,
-        supabaseUserId: supabaseUser?.id,
-        role: DEFAULT_COMPANY_ROLE,
-        companyName: request.company_name,
-        companyLogoUrl: request.company_logo_url,
-      });
-      const localPasswordHash = await bcrypt.hash(
-        request.plain_password || request.password_hash,
-        10,
-      );
-      await db.run("UPDATE admin_users SET password_hash = ? WHERE id = ?", [
-        localPasswordHash,
-        user.id,
-      ]);
-
-      await db.run(
-        `UPDATE company_account_requests
-         SET status = 'approved', reviewed_at = ?, reviewed_by = ?, plain_password = ''
-         WHERE id = ?`,
-        [new Date().toISOString(), req.user.sub, request.id],
-      );
-      return res.json({ approved: true, user, warning: approvalWarning || undefined });
-    } catch (err) {
-      next(err);
-    }
-  },
-);
 
 authRouter.get("/me", requireAuth, async (req, res, next) => {
   try {
-    if (req.user.role === "super_admin") {
-      return res.json({
-        id: "super_admin",
-        email: SUPER_ADMIN_USERNAME,
-        role: "super_admin",
-        createdAt: null,
-      });
-    }
     const user = await db.get("SELECT id, email, role, created_at FROM admin_users WHERE id = ?", [
       req.user.sub,
     ]);
