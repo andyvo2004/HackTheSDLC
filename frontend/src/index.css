@@ -3,16 +3,16 @@
 }
 
 :root {
-  --ws-navy-900: #031b3b;
-  --ws-navy-700: #07336d;
-  --ws-blue-500: #0f63ff;
-  --ws-blue-400: #2f88ff;
-  --ws-cyan-300: #75d7ff;
-  --surface: #f4f8ff;
-  --surface-strong: #ffffff;
-  --text-primary: #0c1f3e;
-  --text-secondary: #4d5f7a;
-  --border: #d8e6ff;
+  --ws-navy-900: #081329;
+  --ws-navy-700: #0f2147;
+  --ws-blue-500: #635bff;
+  --ws-blue-400: #18bfff;
+  --ws-cyan-300: #73dcff;
+  --surface: #0e1732;
+  --surface-strong: #121f3f;
+  --text-primary: #e8efff;
+  --text-secondary: #a8b6d6;
+  --border: #2a3c69;
 }
 
 body {
@@ -25,6 +25,23 @@ body {
     "Segoe UI",
     sans-serif;
   color: var(--text-primary);
+  background:
+    radial-gradient(circle at top right, rgba(24, 191, 255, 0.18), transparent 42%),
+    radial-gradient(circle at 20% 20%, rgba(99, 91, 255, 0.2), transparent 36%),
+    linear-gradient(145deg, #0a1228 0%, #0c1630 100%);
+}
+
+body.light-mode {
+  --ws-navy-900: #031b3b;
+  --ws-navy-700: #07336d;
+  --ws-blue-500: #0f63ff;
+  --ws-blue-400: #2f88ff;
+  --ws-cyan-300: #75d7ff;
+  --surface: #f4f8ff;
+  --surface-strong: #ffffff;
+  --text-primary: #0c1f3e;
+  --text-secondary: #4d5f7a;
+  --border: #d8e6ff;
   background:
     radial-gradient(circle at top right, rgba(117, 215, 255, 0.34), transparent 40%),
     radial-gradient(circle at 20% 20%, rgba(47, 136, 255, 0.24), transparent 30%),
@@ -61,6 +78,72 @@ body {
 .auth-subtitle {
   color: var(--text-secondary);
   margin-bottom: 1.2rem;
+}
+
+.auth-submit-btn {
+  width: 100%;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #0f63ff, #2f88ff);
+  box-shadow: 0 8px 18px rgba(15, 99, 255, 0.25);
+}
+
+.auth-submit-btn:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.auth-google-btn {
+  width: 100%;
+  margin-top: 0.75rem;
+  border: 1px solid #d7e3ff;
+  border-radius: 12px;
+  background: #fff;
+  color: #163766;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6rem;
+  font-weight: 700;
+  box-shadow: 0 4px 12px rgba(6, 36, 89, 0.08);
+}
+
+.auth-google-btn:hover {
+  border-color: #b8ceff;
+  background: #f8fbff;
+}
+
+.auth-google-btn:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+.google-icon {
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  display: inline-grid;
+  place-items: center;
+  background: #fff;
+  border: 1px solid #cfe0ff;
+  color: #0f63ff;
+  font-size: 0.8rem;
+}
+
+.auth-switch-row {
+  margin: 0.9rem 0 0;
+  text-align: center;
+  color: var(--text-secondary);
+}
+
+.auth-switch-link {
+  color: #0f63ff;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.auth-switch-link:hover {
+  text-decoration: underline;
 }
 
 .app-shell {
@@ -1110,118 +1193,4 @@ textarea {
   font-size: 0.875rem;
   text-align: center;
   padding: 20px 0;
-}
-
-/* Multi-method checkout */
-
-.error-banner {
-  background: #fff5f5;
-  color: #c53030;
-  padding: 12px;
-  border-radius: 6px;
-  border: 1px solid #feb2b2;
-  margin-bottom: 15px;
-  font-weight: 500;
-}
-
-.ach-mandate {
-  background: var(--color-bg-secondary, #f8fafc);
-  border-left: 4px solid #ecc94b;
-  padding: 15px;
-  margin-bottom: 20px;
-  font-size: 0.85rem;
-}
-
-.ach-mandate__title {
-  font-size: 0.95rem;
-  font-weight: 600;
-  margin: 0 0 8px;
-}
-
-.ach-mandate__text {
-  margin: 0 0 8px;
-  line-height: 1.5;
-}
-
-.ach-mandate__processing-time {
-  margin: 0 0 12px;
-  font-weight: 500;
-}
-
-.ach-mandate__checkbox-row {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  cursor: pointer;
-}
-
-.ach-mandate__checkbox-row input[type="checkbox"] {
-  margin-top: 2px;
-  flex-shrink: 0;
-}
-
-.payment-method-tabs {
-  display: flex;
-  margin-bottom: 20px;
-  border-bottom: 2px solid var(--color-border, #e2e8f0);
-}
-
-.payment-method-tabs button {
-  flex: 1;
-  padding: 10px;
-  background: none;
-  border: none;
-  cursor: pointer;
-  border-bottom: 2px solid transparent;
-  margin-bottom: -2px;
-  font-size: 0.9rem;
-  color: inherit;
-  transition: color 0.15s, border-color 0.15s;
-}
-
-.payment-method-tabs button:focus-visible {
-  outline: 3px solid #2563eb;
-  outline-offset: 2px;
-}
-
-.payment-method-tabs button.active {
-  border-bottom: 2px solid var(--color-accent, #0f63ff);
-  color: var(--color-accent, #0f63ff);
-  font-weight: bold;
-}
-
-.payment-container {
-  margin-top: 8px;
-}
-
-.payment-form {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-.btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 10px 20px;
-  border: none;
-  border-radius: 6px;
-  font-size: 1rem;
-  cursor: pointer;
-  transition: opacity 0.15s;
-}
-
-.btn:disabled {
-  opacity: 0.55;
-  cursor: not-allowed;
-}
-
-.btn-primary {
-  background: var(--color-accent, #0f63ff);
-  color: #fff;
-}
-
-.btn-full {
-  width: 100%;
 }
