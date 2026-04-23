@@ -137,6 +137,68 @@ body {
   margin-bottom: 1.2rem;
 }
 
+.auth-submit-btn {
+  width: 100%;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #0f63ff, #2f88ff);
+  box-shadow: 0 8px 18px rgba(15, 99, 255, 0.25);
+}
+
+.auth-submit-btn:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.auth-google-btn {
+  width: 100%;
+  margin-top: 0.75rem;
+  border: 1px solid #d7e3ff;
+  border-radius: 12px;
+  background: #fff;
+  color: #163766;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6rem;
+  font-weight: 700;
+  box-shadow: 0 4px 12px rgba(6, 36, 89, 0.08);
+}
+
+.auth-google-btn:hover {
+  border-color: #b8ceff;
+  background: #f8fbff;
+}
+
+.auth-google-btn:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+.google-icon {
+  width: 20px;
+  height: 20px;
+  display: inline-block;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+
+.auth-switch-row {
+  margin: 0.9rem 0 0;
+  text-align: center;
+  color: var(--text-secondary);
+}
+
+.auth-switch-link {
+  color: #0f63ff;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.auth-switch-link:hover {
+  text-decoration: underline;
+}
+
 .app-shell {
   min-height: 100vh;
   display: grid;
