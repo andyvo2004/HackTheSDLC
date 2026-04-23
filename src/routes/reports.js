@@ -4,15 +4,20 @@ import { supabaseAdmin } from "../lib/supabaseAdmin.js";
 
 export const reportsRouter = Router();
 
+function isMissingOwnerColumnError(err) {
+  return err?.code === "42703" && String(err?.message || "").includes("owner_user_id");
+}
+
 function pageInfo(paymentPages) {
   return Array.isArray(paymentPages) ? paymentPages[0] : paymentPages;
 }
 
-async function queryTransactions(query) {
+async function queryTransactions(query, ownerUserId) {
   let builder = supabaseAdmin
     .from("transactions")
-    .select("*,payment_pages!inner(id,title,slug)")
+    .select("*,payment_pages!inner(id,title,slug,owner_user_id)")
     .order("created_at", { ascending: false });
+  builder = builder.eq("payment_pages.owner_user_id", ownerUserId);
 
   if (query.from) builder = builder.gte("created_at", String(query.from));
   if (query.to) builder = builder.lte("created_at", String(query.to));
@@ -21,13 +26,27 @@ async function queryTransactions(query) {
   if (query.paymentMethod) builder = builder.eq("payment_method", String(query.paymentMethod));
 
   const { data, error } = await builder;
+  if (error && isMissingOwnerColumnError(error)) {
+    let legacyBuilder = supabaseAdmin
+      .from("transactions")
+      .select("*,payment_pages!inner(id,title,slug)")
+      .order("created_at", { ascending: false });
+    if (query.from) legacyBuilder = legacyBuilder.gte("created_at", String(query.from));
+    if (query.to) legacyBuilder = legacyBuilder.lte("created_at", String(query.to));
+    if (query.pageId) legacyBuilder = legacyBuilder.eq("page_id", String(query.pageId));
+    if (query.status) legacyBuilder = legacyBuilder.eq("status", String(query.status));
+    if (query.paymentMethod) legacyBuilder = legacyBuilder.eq("payment_method", String(query.paymentMethod));
+    const { data: legacyData, error: legacyError } = await legacyBuilder;
+    if (legacyError) throw legacyError;
+    return legacyData || [];
+  }
   if (error) throw error;
   return data || [];
 }
 
 reportsRouter.get("/transactions", async (req, res, next) => {
   try {
-    const rows = await queryTransactions(req.query);
+    const rows = await queryTransactions(req.query, req.user.sub);
     return res.json(
       rows.map((r) => {
         const page = pageInfo(r.payment_pages);
@@ -50,11 +69,17 @@ reportsRouter.get("/transactions", async (req, res, next) => {
   }
 });
 
-reportsRouter.get("/summary", async (_req, res, next) => {
+reportsRouter.get("/summary", async (req, res, next) => {
   try {
-    const { data: allTx, error } = await supabaseAdmin
+    let { data: allTx, error } = await supabaseAdmin
       .from("transactions")
-      .select("payment_method,amount,status,gl_codes_json");
+      .select("payment_method,amount,status,gl_codes_json,payment_pages!inner(owner_user_id)")
+      .eq("payment_pages.owner_user_id", req.user.sub);
+    if (error && isMissingOwnerColumnError(error)) {
+      ({ data: allTx, error } = await supabaseAdmin
+        .from("transactions")
+        .select("payment_method,amount,status,gl_codes_json"));
+    }
     if (error) throw error;
     const tx = allTx || [];
     const successTx = tx.filter((row) => row.status === "success");
@@ -96,7 +121,7 @@ reportsRouter.get("/summary", async (_req, res, next) => {
 
 reportsRouter.get("/transactions.csv", async (req, res, next) => {
   try {
-    const rows = await queryTransactions(req.query);
+    const rows = await queryTransactions(req.query, req.user.sub);
     const csvRows = rows.map((r) => {
       const page = pageInfo(r.payment_pages);
       return {
@@ -120,14 +145,33 @@ reportsRouter.get("/transactions.csv", async (req, res, next) => {
   }
 });
 
-reportsRouter.get("/insights", async (_req, res, next) => {
+reportsRouter.get("/insights", async (req, res, next) => {
   try {
-    const [{ data: txRows, error: txError }, { data: viewRows, error: viewError }, { data: pages, error: pagesError }] =
+    const ownerUserId = req.user.sub;
+    let [{ data: txRows, error: txError }, { data: viewRows, error: viewError }, { data: pages, error: pagesError }] =
       await Promise.all([
-        supabaseAdmin.from("transactions").select("id,page_id,status,amount,created_at"),
-        supabaseAdmin.from("page_views").select("id,page_id"),
-        supabaseAdmin.from("payment_pages").select("id,title,slug"),
+        supabaseAdmin
+          .from("transactions")
+          .select("id,page_id,status,amount,created_at,payment_pages!inner(owner_user_id)")
+          .eq("payment_pages.owner_user_id", ownerUserId),
+        supabaseAdmin
+          .from("page_views")
+          .select("id,page_id,payment_pages!inner(owner_user_id)")
+          .eq("payment_pages.owner_user_id", ownerUserId),
+        supabaseAdmin.from("payment_pages").select("id,title,slug").eq("owner_user_id", ownerUserId),
       ]);
+    if (
+      isMissingOwnerColumnError(txError) ||
+      isMissingOwnerColumnError(viewError) ||
+      isMissingOwnerColumnError(pagesError)
+    ) {
+      [{ data: txRows, error: txError }, { data: viewRows, error: viewError }, { data: pages, error: pagesError }] =
+        await Promise.all([
+          supabaseAdmin.from("transactions").select("id,page_id,status,amount,created_at"),
+          supabaseAdmin.from("page_views").select("id,page_id"),
+          supabaseAdmin.from("payment_pages").select("id,title,slug"),
+        ]);
+    }
     if (txError) throw txError;
     if (viewError) throw viewError;
     if (pagesError) throw pagesError;

@@ -2,10 +2,27 @@ import { useEffect, useRef, useState } from "react";
 import QRCode from "qrcode";
 import { useI18n } from "../i18n.js";
 
-export function DistributionPanel({ pageSlug, pageTitle }) {
+const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:4000";
+
+export function DistributionPanel({ pageId, pageSlug, pageTitle, authToken }) {
   const { t } = useI18n();
-  const url = `${window.location.origin}/pay/${pageSlug}`;
-  const iframeCode = `<iframe src="${url}" width="100%" height="650" frameborder="0" title="${pageTitle} ${t("paymentPage")}" allow="payment"></iframe>`;
+  const [shareInfo, setShareInfo] = useState({
+    publicUrl: `${window.location.origin}/pay/${pageSlug}`,
+    iframeSnippet: "",
+  });
+  const url = shareInfo.publicUrl;
+  const iframeCode =
+    shareInfo.iframeSnippet ||
+    [
+      "<iframe",
+      `  src="${url}"`,
+      `  title="${pageTitle} ${t("paymentPage")}"`,
+      '  width="100%"',
+      '  height="720"',
+      '  style="border:0;max-width:100%;border-radius:12px;"',
+      '  loading="lazy"',
+      "></iframe>",
+    ].join("\n");
 
   const [linkCopied, setLinkCopied] = useState(false);
   const [codeCopied, setCodeCopied] = useState(false);
@@ -19,6 +36,31 @@ export function DistributionPanel({ pageSlug, pageTitle }) {
       });
     }
   }, [url]);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadShareInfo() {
+      if (!pageId || !authToken) return;
+      try {
+        const response = await fetch(`${API_BASE}/admin/pages/${pageId}/share`, {
+          headers: { Authorization: `Bearer ${authToken}` },
+        });
+        if (!response.ok) return;
+        const payload = await response.json();
+        if (cancelled) return;
+        setShareInfo({
+          publicUrl: payload.publicUrl || `${window.location.origin}/pay/${pageSlug}`,
+          iframeSnippet: payload.iframeSnippet || "",
+        });
+      } catch {
+        // Keep fallback local preview URL/snippet.
+      }
+    }
+    loadShareInfo();
+    return () => {
+      cancelled = true;
+    };
+  }, [authToken, pageId, pageSlug]);
 
   const copyLink = async () => {
     await navigator.clipboard.writeText(url);
@@ -67,6 +109,7 @@ export function DistributionPanel({ pageSlug, pageTitle }) {
 
       <div className="dist-card">
         <h4 className="dist-card-title">{t("directUrl")}</h4>
+        <p className="dist-helper">{t("publicPaymentLink", { defaultValue: "Public payment link" })}</p>
         <input
           className="dist-url-input"
           readOnly
@@ -85,6 +128,7 @@ export function DistributionPanel({ pageSlug, pageTitle }) {
 
       <div className="dist-card">
         <h4 className="dist-card-title">{t("embedCode")}</h4>
+        <p className="dist-helper">{t("copyPasteWebsite", { defaultValue: "Copy and paste into your website" })}</p>
         <textarea
           className="dist-embed-code"
           readOnly

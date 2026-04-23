@@ -1,7 +1,9 @@
 import { useState } from 'react';
 import { useStripe, useElements, PaymentElement } from '@stripe/react-stripe-js';
+import { useI18n } from "../i18n.js";
 
 export default function CardWalletForm({ onSuccess, onError }) {
+  const { t } = useI18n();
   const stripe = useStripe();
   const elements = useElements();
   const [loading, setLoading] = useState(false);
@@ -30,7 +32,9 @@ export default function CardWalletForm({ onSuccess, onError }) {
     <form onSubmit={handleSubmit} className="payment-form">
       <PaymentElement options={{ layout: 'tabs' }} />
       <button type="submit" disabled={loading} className="btn btn-primary btn-full pay-btn">
-        {loading ? 'Validating...' : 'Pay Now'}
+        {loading
+          ? t("validating", { defaultValue: "Validating..." })
+          : t("payNow", { defaultValue: "Pay now" })}
       </button>
     </form>
   );

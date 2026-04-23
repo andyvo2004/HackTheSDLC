@@ -402,6 +402,69 @@ button {
   box-shadow: 0 10px 30px rgba(7, 51, 109, 0.08);
 }
 
+.lang-switcher {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.sidebar-lang-switcher {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin-bottom: 0.5rem;
+}
+
+.sidebar-lang-switcher label {
+  margin: 0;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #dbe8ff;
+}
+
+.sidebar-lang-switcher select {
+  width: 100%;
+  min-height: 40px;
+  border-radius: 10px;
+  border: 1px solid rgba(117, 215, 255, 0.38);
+  background: rgba(117, 215, 255, 0.14);
+  color: #f3f7ff;
+  padding: 0.5rem 0.75rem;
+  font-weight: 600;
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+}
+
+.sidebar-lang-switcher select:focus {
+  outline: 2px solid rgba(117, 215, 255, 0.72);
+  outline-offset: 1px;
+  border-color: rgba(117, 215, 255, 0.62);
+}
+
+.sidebar-lang-switcher select option {
+  color: #f3f7ff;
+  background: #0f2452;
+}
+
+.lang-switcher label {
+  margin: 0;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.lang-switcher select {
+  min-width: 160px;
+}
+
+.lang-switcher--header {
+  margin-top: 0.75rem;
+}
+
 .dashboard-header h1 {
   margin: 0.35rem 0 0.45rem;
 }
@@ -417,7 +480,7 @@ button {
 
 .stats-grid {
   display: grid;
-  gap: 1rem;
+  gap: 0.75rem;
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
@@ -439,8 +502,17 @@ button {
 }
 
 .panel {
-  margin-top: 1rem;
+  margin-top: 0.7rem;
   padding: 1.2rem;
+}
+
+.view-stack {
+  display: grid;
+  gap: 0.7rem;
+}
+
+.view-stack .panel {
+  margin-top: 0;
 }
 
 .panel h3 {
@@ -612,10 +684,11 @@ button {
 
 .preview-banner {
   border-radius: 10px;
-  padding: 0.55rem 0.65rem;
+  padding: 0.65rem 0.75rem;
   background: #f2f8ff;
   color: #184078;
-  font-size: 0.87rem;
+  font-size: 0.95rem;
+  border: 1px solid #dce9ff;
 }
 
 .preview-body small {
@@ -702,42 +775,72 @@ button {
   min-height: 100vh;
   display: grid;
   place-items: center;
-  padding: 1.5rem;
+  padding: 2rem 1.25rem;
+}
+
+.public-lang-switcher {
+  width: min(760px, 100%);
+  justify-content: flex-end;
+  margin: 0 0 0.8rem;
 }
 
 .public-card {
-  width: min(640px, 100%);
-  border-radius: 18px;
+  width: min(760px, 100%);
+  border-radius: 22px;
   overflow: hidden;
   border: 1px solid var(--border);
   background: #fff;
-  box-shadow: 0 20px 48px rgba(6, 36, 89, 0.14);
+  box-shadow:
+    0 24px 60px rgba(6, 36, 89, 0.18),
+    0 6px 20px rgba(15, 99, 255, 0.08);
 }
 
 .public-header {
   color: #fff;
-  padding: 1rem 1.1rem;
+  padding: 1.4rem 1.5rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.18);
 }
 
-.public-header p {
+.public-header h1 {
   margin: 0;
-  font-size: 1.2rem;
-  font-weight: 700;
+  font-size: clamp(1.8rem, 3vw, 2.6rem);
+  font-weight: 800;
+  letter-spacing: -0.02em;
 }
 
-.public-header small {
+.public-subtitle {
+  margin: 0.4rem 0 0;
+  font-size: 1rem;
+  font-weight: 600;
   opacity: 0.95;
 }
 
 .public-body {
-  padding: 1rem;
+  padding: 1.3rem;
   display: grid;
-  gap: 0.8rem;
+  gap: 1rem;
 }
 
 .public-form {
   display: grid;
-  gap: 0.8rem;
+  gap: 1rem;
+}
+
+.public-logo {
+  width: auto;
+  height: 48px;
+  object-fit: contain;
+  margin-bottom: 0.8rem;
+  background: rgba(255, 255, 255, 0.94);
+  border: 1px solid rgba(255, 255, 255, 0.75);
+  border-radius: 10px;
+  padding: 0.35rem 0.5rem;
+}
+
+.public-form .field-group label,
+.public-form .checkbox-group label {
+  font-weight: 600;
+  color: #5f6f86;
 }
 
 .stripe-box {
@@ -955,12 +1058,13 @@ th {
 }
 
 .dist-url-input {
-  font-size: 0.82rem;
+  font-size: 0.8rem;
+  font-family: "SFMono-Regular", Menlo, Monaco, Consolas, "Liberation Mono", monospace;
   color: #0f1e35;
   background: #fff;
   border: 1px solid rgba(15, 99, 255, 0.2);
   border-radius: 6px;
-  padding: 0.45rem 0.6rem;
+  padding: 0.55rem 0.65rem;
   width: 100%;
   box-sizing: border-box;
   cursor: pointer;
@@ -968,13 +1072,14 @@ th {
 
 .dist-embed-code {
   font-family: "Courier New", Courier, monospace;
-  font-size: 0.75rem;
+  font-size: 0.78rem;
   color: #2d3f5a;
   background: #fff;
   border: 1px solid rgba(15, 99, 255, 0.2);
-  border-radius: 6px;
+  border-radius: 8px;
   padding: 0.5rem 0.6rem;
-  resize: none;
+  resize: vertical;
+  min-height: 180px;
   width: 100%;
   box-sizing: border-box;
   cursor: pointer;
@@ -992,6 +1097,10 @@ th {
   cursor: pointer;
   transition: background 0.15s;
   align-self: flex-start;
+}
+
+.dist-card .dist-helper:first-of-type {
+  margin-top: -0.3rem;
 }
 
 .dist-btn:hover {
@@ -1299,6 +1408,7 @@ body.dark-mode .payment-preview .preview-body input {
   .lang-switcher select {
     flex: 1;
   }
+
 }
 
 @media (max-width: 480px) {
@@ -1467,9 +1577,38 @@ textarea {
 
 .form-fieldset {
   border: 1px solid rgba(15, 99, 255, 0.15);
-  border-radius: 10px;
-  padding: 1rem 1rem 0.25rem;
+  border-radius: 14px;
+  padding: 1rem 1rem 0.35rem;
   margin-bottom: 1rem;
+  background: #fcfdff;
+}
+
+.preview-fieldset {
+  margin-bottom: 0.75rem;
+}
+
+.preview-method-tabs {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.preview-method-tabs button {
+  flex: 1;
+  padding: 0.6rem 0.55rem;
+  border: 1px solid #d6e4ff;
+  border-radius: 8px;
+  background: #f5f9ff;
+  color: #1e3e70;
+  font-weight: 600;
+}
+
+.preview-method-tabs button.active {
+  border-color: #0f63ff;
+  background: #e9f2ff;
+}
+
+.preview-amount-display {
+  margin: 0 0 0.75rem;
 }
 
 .form-fieldset legend {

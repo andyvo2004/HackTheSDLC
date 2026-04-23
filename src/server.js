@@ -52,9 +52,10 @@ app.use("/public", publicRouter);
 
 app.get("/api/feed", (req, res) => {
   const token = req.query.token;
+  let userPayload = null;
   try {
     if (!token) throw new Error("Missing token");
-    verifyToken(token);
+    userPayload = verifyToken(token);
   } catch {
     return res.status(401).end();
   }
@@ -69,7 +70,7 @@ app.get("/api/feed", (req, res) => {
     res.write(": keepalive\n\n");
   }, 30000);
 
-  feedClients.add(res);
+  feedClients.set(res, userPayload.sub);
 
   req.on("close", () => {
     clearInterval(keepAlive);
@@ -85,7 +86,7 @@ app.use((err, _req, res, _next) => {
 async function seedAdmin() {
   const email = process.env.ADMIN_EMAIL;
   const password = process.env.ADMIN_PASSWORD;
-  if (!email || !password) return;
+  if (!email || !password) return null;
 
   const { data: existing, error: existingError } = await supabaseAdmin
     .from("admin_users")
@@ -93,11 +94,12 @@ async function seedAdmin() {
     .eq("email", email.trim().toLowerCase())
     .maybeSingle();
   if (existingError) throw existingError;
-  if (existing) return;
+  if (existing) return existing.id;
 
   const hash = await bcrypt.hash(password, 10);
+  const id = uuidv4();
   const { error } = await supabaseAdmin.from("admin_users").insert({
-    id: uuidv4(),
+    id,
     email: email.trim().toLowerCase(),
     password_hash: hash,
     role: "owner",
@@ -105,11 +107,12 @@ async function seedAdmin() {
   });
   if (error) throw error;
   console.log(`Seeded admin user: ${email}`);
+  return id;
 }
 
 async function bootstrap() {
-  await initDb();
-  await seedAdmin();
+  const seededAdminId = await seedAdmin();
+  await initDb({ defaultOwnerUserId: seededAdminId || null });
   app.listen(port, () => {
     console.log(`QPP backend listening on http://localhost:${port}`);
   });

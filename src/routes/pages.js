@@ -16,6 +16,13 @@ const customFieldSchema = z.object({
   order: z.number().int().nonnegative().default(0),
 });
 
+const glCodeSchema = z
+  .string()
+  .trim()
+  .min(2)
+  .max(24)
+  .regex(/^[A-Za-z0-9][A-Za-z0-9_.-]*$/, "Invalid GL code format");
+
 const pageSchema = z.object({
   slug: z.string().regex(/^[a-z0-9-]+$/),
   title: z.string().min(1),
@@ -29,13 +36,36 @@ const pageSchema = z.object({
   fixedAmount: z.number().nonnegative().optional(),
   minAmount: z.number().nonnegative().optional(),
   maxAmount: z.number().nonnegative().optional(),
-  glCodes: z.array(z.string()).default([]),
+  glCodes: z.array(glCodeSchema).default([]),
   emailTemplate: z.string().optional(),
   isActive: z.boolean().default(true),
   customFields: z.array(customFieldSchema).max(10).default([]),
 });
 
 export const pagesRouter = Router();
+
+function isMissingOwnerColumnError(err) {
+  return err?.code === "42703" && String(err?.message || "").includes("owner_user_id");
+}
+
+function ownedPageQuery(userId) {
+  return supabaseAdmin.from("payment_pages").select("*").eq("owner_user_id", userId);
+}
+
+async function requireOwnedPage(userId, pageId) {
+  const { data: page, error } = await ownedPageQuery(userId).eq("id", pageId).maybeSingle();
+  if (error && isMissingOwnerColumnError(error)) {
+    const { data: legacyPage, error: legacyError } = await supabaseAdmin
+      .from("payment_pages")
+      .select("*")
+      .eq("id", pageId)
+      .maybeSingle();
+    if (legacyError) throw legacyError;
+    return legacyPage;
+  }
+  if (error) throw error;
+  return page;
+}
 
 function serializePageConfig(body) {
   return {
@@ -161,10 +191,13 @@ function mapPage(row, customFields) {
 
 pagesRouter.get("/", async (req, res, next) => {
   try {
-    const { data: rows, error } = await supabaseAdmin
-      .from("payment_pages")
-      .select("*")
-      .order("created_at", { ascending: false });
+    let { data: rows, error } = await ownedPageQuery(req.user.sub).order("created_at", { ascending: false });
+    if (error && isMissingOwnerColumnError(error)) {
+      ({ data: rows, error } = await supabaseAdmin
+        .from("payment_pages")
+        .select("*")
+        .order("created_at", { ascending: false }));
+    }
     if (error) throw error;
     const out = await Promise.all(
       rows.map(async (row) => mapPage(row, await listFields(row.id))),
@@ -177,12 +210,7 @@ pagesRouter.get("/", async (req, res, next) => {
 
 pagesRouter.get("/:id", async (req, res, next) => {
   try {
-    const { data: row, error } = await supabaseAdmin
-      .from("payment_pages")
-      .select("*")
-      .eq("id", req.params.id)
-      .maybeSingle();
-    if (error) throw error;
+    const row = await requireOwnedPage(req.user.sub, req.params.id);
     if (!row) return res.status(404).json({ error: "Page not found" });
     return res.json(mapPage(row, await listFields(row.id)));
   } catch (err) {
@@ -201,8 +229,9 @@ pagesRouter.post("/", requireRole([Roles.EDITOR, Roles.OWNER]), async (req, res,
     const pageId = uuidv4();
     const body = parsed.data;
 
-    const { error: pageError } = await supabaseAdmin.from("payment_pages").insert({
+    let { error: pageError } = await supabaseAdmin.from("payment_pages").insert({
       id: pageId,
+      owner_user_id: req.user.sub,
       slug: body.slug,
       title: body.title,
       subtitle: body.subtitle || null,
@@ -223,6 +252,30 @@ pagesRouter.post("/", requireRole([Roles.EDITOR, Roles.OWNER]), async (req, res,
       created_at: now,
       updated_at: now,
     });
+    if (pageError && isMissingOwnerColumnError(pageError)) {
+      ({ error: pageError } = await supabaseAdmin.from("payment_pages").insert({
+        id: pageId,
+        slug: body.slug,
+        title: body.title,
+        subtitle: body.subtitle || null,
+        description: body.description || null,
+        logo_url: body.logoUrl || null,
+        brand_color: body.brandColor || null,
+        header_message: body.headerMessage || null,
+        footer_message: body.footerMessage || null,
+        amount_mode: body.amountMode,
+        fixed_amount: body.fixedAmount ?? null,
+        min_amount: body.minAmount ?? null,
+        max_amount: body.maxAmount ?? null,
+        gl_codes_json: JSON.stringify(body.glCodes || []),
+        email_template: body.emailTemplate || null,
+        current_version: 1,
+        last_published_at: now,
+        is_active: Boolean(body.isActive),
+        created_at: now,
+        updated_at: now,
+      }));
+    }
     if (pageError) throw pageError;
 
     for (const field of body.customFields) {
@@ -241,12 +294,8 @@ pagesRouter.post("/", requireRole([Roles.EDITOR, Roles.OWNER]), async (req, res,
     }
 
     await createVersionSnapshot(pageId, 1, serializePageConfig(body), req.user?.sub);
-    const { data: row, error: rowError } = await supabaseAdmin
-      .from("payment_pages")
-      .select("*")
-      .eq("id", pageId)
-      .single();
-    if (rowError) throw rowError;
+    const row = await requireOwnedPage(req.user.sub, pageId);
+    if (!row) return res.status(404).json({ error: "Page not found" });
     return res.status(201).json(mapPage(row, await listFields(pageId)));
   } catch (err) {
     if (isUniqueViolation(err)) {
@@ -263,12 +312,7 @@ pagesRouter.put("/:id", requireRole([Roles.EDITOR, Roles.OWNER]), async (req, re
       return res.status(400).json({ error: "Validation failed", details: parsed.error.flatten() });
     }
 
-    const { data: existing, error: existingError } = await supabaseAdmin
-      .from("payment_pages")
-      .select("*")
-      .eq("id", req.params.id)
-      .maybeSingle();
-    if (existingError) throw existingError;
+    const existing = await requireOwnedPage(req.user.sub, req.params.id);
     if (!existing) return res.status(404).json({ error: "Page not found" });
 
     const body = parsed.data;
@@ -296,12 +340,8 @@ pagesRouter.put("/:id", requireRole([Roles.EDITOR, Roles.OWNER]), async (req, re
       await createVersionSnapshot(req.params.id, nextVersion, config, req.user?.sub);
     }
 
-    const { data: row, error: rowError } = await supabaseAdmin
-      .from("payment_pages")
-      .select("*")
-      .eq("id", req.params.id)
-      .single();
-    if (rowError) throw rowError;
+    const row = await requireOwnedPage(req.user.sub, req.params.id);
+    if (!row) return res.status(404).json({ error: "Page not found" });
     return res.json(mapPage(row, await listFields(req.params.id)));
   } catch (err) {
     if (isUniqueViolation(err)) {
@@ -317,12 +357,21 @@ pagesRouter.patch(
   async (req, res, next) => {
     try {
       const isActive = Boolean(req.body?.isActive);
-      const { data: row, error } = await supabaseAdmin
+      let { data: row, error } = await supabaseAdmin
         .from("payment_pages")
         .update({ is_active: isActive, updated_at: new Date().toISOString() })
+        .eq("owner_user_id", req.user.sub)
         .eq("id", req.params.id)
         .select("*")
         .maybeSingle();
+      if (error && isMissingOwnerColumnError(error)) {
+        ({ data: row, error } = await supabaseAdmin
+          .from("payment_pages")
+          .update({ is_active: isActive, updated_at: new Date().toISOString() })
+          .eq("id", req.params.id)
+          .select("*")
+          .maybeSingle());
+      }
       if (error) throw error;
       if (!row) return res.status(404).json({ error: "Page not found" });
       return res.json(mapPage(row, await listFields(req.params.id)));
@@ -334,6 +383,8 @@ pagesRouter.patch(
 
 pagesRouter.get("/:id/versions", async (req, res, next) => {
   try {
+    const ownedPage = await requireOwnedPage(req.user.sub, req.params.id);
+    if (!ownedPage) return res.status(404).json({ error: "Page not found" });
     const { data: rows, error } = await supabaseAdmin
       .from("payment_page_versions")
       .select("version_number,published_by,created_at")
@@ -354,12 +405,7 @@ pagesRouter.get("/:id/versions", async (req, res, next) => {
 
 pagesRouter.post("/:id/publish", requireRole([Roles.EDITOR, Roles.OWNER]), async (req, res, next) => {
   try {
-    const { data: row, error: rowError } = await supabaseAdmin
-      .from("payment_pages")
-      .select("*")
-      .eq("id", req.params.id)
-      .maybeSingle();
-    if (rowError) throw rowError;
+    const row = await requireOwnedPage(req.user.sub, req.params.id);
     if (!row) return res.status(404).json({ error: "Page not found" });
     if (!row.draft_config_json) return res.status(400).json({ error: "No draft changes to publish" });
 
@@ -377,12 +423,8 @@ pagesRouter.post("/:id/publish", requireRole([Roles.EDITOR, Roles.OWNER]), async
     if (updateError) throw updateError;
     await createVersionSnapshot(req.params.id, nextVersion, config, req.user?.sub);
 
-    const { data: updated, error: updatedError } = await supabaseAdmin
-      .from("payment_pages")
-      .select("*")
-      .eq("id", req.params.id)
-      .single();
-    if (updatedError) throw updatedError;
+    const updated = await requireOwnedPage(req.user.sub, req.params.id);
+    if (!updated) return res.status(404).json({ error: "Page not found" });
     return res.json(mapPage(updated, await listFields(req.params.id)));
   } catch (err) {
     if (isUniqueViolation(err)) {
@@ -397,12 +439,7 @@ pagesRouter.post("/:id/rollback", requireRole([Roles.EDITOR, Roles.OWNER]), asyn
     const { versionNumber } = req.body || {};
     if (!versionNumber) return res.status(400).json({ error: "versionNumber is required" });
 
-    const { data: page, error: pageError } = await supabaseAdmin
-      .from("payment_pages")
-      .select("*")
-      .eq("id", req.params.id)
-      .maybeSingle();
-    if (pageError) throw pageError;
+    const page = await requireOwnedPage(req.user.sub, req.params.id);
     if (!page) return res.status(404).json({ error: "Page not found" });
 
     const { data: version, error: versionError } = await supabaseAdmin
@@ -428,12 +465,8 @@ pagesRouter.post("/:id/rollback", requireRole([Roles.EDITOR, Roles.OWNER]), asyn
     if (updateError) throw updateError;
     await createVersionSnapshot(req.params.id, nextVersion, config, req.user?.sub);
 
-    const { data: updated, error: updatedError } = await supabaseAdmin
-      .from("payment_pages")
-      .select("*")
-      .eq("id", req.params.id)
-      .single();
-    if (updatedError) throw updatedError;
+    const updated = await requireOwnedPage(req.user.sub, req.params.id);
+    if (!updated) return res.status(404).json({ error: "Page not found" });
     return res.json(mapPage(updated, await listFields(req.params.id)));
   } catch (err) {
     if (isUniqueViolation(err)) {
@@ -445,16 +478,21 @@ pagesRouter.post("/:id/rollback", requireRole([Roles.EDITOR, Roles.OWNER]), asyn
 
 pagesRouter.get("/:id/share", async (req, res, next) => {
   try {
-    const { data: row, error } = await supabaseAdmin
-      .from("payment_pages")
-      .select("*")
-      .eq("id", req.params.id)
-      .maybeSingle();
-    if (error) throw error;
+    const row = await requireOwnedPage(req.user.sub, req.params.id);
     if (!row) return res.status(404).json({ error: "Page not found" });
     const base = process.env.BASE_PUBLIC_URL || `http://localhost:${process.env.PORT || 4000}`;
     const publicUrl = `${base.replace(/\/$/, "")}/pay/${row.slug}`;
-    const iframeSnippet = `<iframe src="${publicUrl}" title="${row.title}" width="100%" height="720" style="border:0;" loading="lazy"></iframe>`;
+    const iframeSnippet = [
+      `<iframe`,
+      `  src="${publicUrl}"`,
+      `  title="${row.title}"`,
+      `  width="100%"`,
+      `  height="720"`,
+      `  style="border:0;max-width:100%;border-radius:12px;"`,
+      `  loading="lazy"`,
+      `  referrerpolicy="strict-origin-when-cross-origin"`,
+      `></iframe>`,
+    ].join("\n");
     const qrCodeDataUrl = await QRCode.toDataURL(publicUrl);
 
     return res.json({ publicUrl, iframeSnippet, qrCodeDataUrl });

@@ -225,7 +225,7 @@ publicRouter.post("/pay/:slug/confirm", async (req, res, next) => {
 
     const { data: tx, error: txError } = await supabaseAdmin
       .from("transactions")
-      .select("*,payment_pages!inner(title,slug,email_template)")
+      .select("*,payment_pages!inner(title,slug,email_template,owner_user_id)")
       .eq("stripe_payment_intent_id", paymentIntentId)
       .maybeSingle();
     if (txError) throw txError;
@@ -254,6 +254,7 @@ publicRouter.post("/pay/:slug/confirm", async (req, res, next) => {
 
     if (mappedStatus === "success") {
       broadcastPaymentEvent({
+        ownerUserId: pageDetails?.owner_user_id || null,
         type: "payment_succeeded",
         transaction_id: tx.id,
         amount: tx.amount,
@@ -265,12 +266,24 @@ publicRouter.post("/pay/:slug/confirm", async (req, res, next) => {
       });
 
       if (tx.payer_email && pageDetails?.title) {
+        const { data: fieldRows, error: fieldRowsError } = await supabaseAdmin
+          .from("field_responses")
+          .select("value,custom_fields!inner(label)")
+          .eq("transaction_id", tx.id);
+        if (fieldRowsError) throw fieldRowsError;
+        const customFields = {};
+        for (const row of fieldRows || []) {
+          const field = Array.isArray(row.custom_fields) ? row.custom_fields[0] : row.custom_fields;
+          if (field?.label) {
+            customFields[field.label] = row.value;
+          }
+        }
         const context = {
           payerName: tx.payer_name,
           amount: tx.amount,
           transactionId: tx.id,
           date: tx.created_at,
-          customFields: {},
+          customFields,
         };
         const emailBody = renderConfirmationEmail(pageDetails?.email_template, context);
         await sendConfirmationEmail({

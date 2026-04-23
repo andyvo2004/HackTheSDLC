@@ -17,6 +17,8 @@ import { getContrastColor } from "./utils/color.js";
 import ActivityFeed from "./components/ActivityFeed.jsx";
 import AchForm from "./components/AchForm.jsx";
 import CardWalletForm from "./components/CardWalletForm.jsx";
+import { LanguageProvider, LANGUAGE_OPTIONS, useI18n } from "./i18n.js";
+import { localizeSeededText } from "./utils/localizeSeededText.js";
 import { supabase } from "./lib/supabaseClient.js";
 import HomePage from "./HomePage.jsx";
 import googleLogo from "./assets/google-logo.png";
@@ -25,6 +27,23 @@ import qppPlainLogo from "./assets/qpp-plain.png";
 const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:4000";
 const STRIPE_KEY = import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY || "";
 const stripePromise = STRIPE_KEY ? loadStripe(STRIPE_KEY) : null;
+const PAGE_FORM_DEFAULTS = {
+  slug: "",
+  title: "",
+  subtitle: "Secure, self-service payment experience",
+  description: "",
+  logoUrl: "",
+  amountMode: "fixed",
+  fixedAmount: 25,
+  minAmount: 0,
+  maxAmount: 0,
+  glCodes: "GL-100",
+  brandColor: "#0f63ff",
+  headerMessage: "Thank you for choosing our organization",
+  footerMessage: "Need help? Reach our billing support team.",
+  emailTemplate:
+    "Hi {{payer_name}},\n\nWe received your payment of ${{amount}}.\nTransaction ID: {{transaction_id}}\nDate: {{date}}\nCustom fields: {{custom_fields}}\n\nThank you.",
+};
 
 async function apiRequest(path, { method = "GET", token, body } = {}) {
   const response = await fetch(`${API_BASE}${path}`, {
@@ -61,10 +80,11 @@ function StatCard({ label, value }) {
 }
 
 function MiniAreaChart({ values }) {
-  const max = Math.max(...values, 1);
-  const points = values
+  const safeValues = Array.isArray(values) && values.length > 0 ? values : [0];
+  const max = Math.max(...safeValues, 1);
+  const points = safeValues
     .map((v, i) => {
-      const x = (i / (values.length - 1 || 1)) * 100;
+      const x = (i / (safeValues.length - 1 || 1)) * 100;
       const y = 100 - (v / max) * 88;
       return `${x},${y}`;
     })
@@ -89,6 +109,7 @@ function MiniAreaChart({ values }) {
 }
 
 function MethodBars({ items }) {
+  const { t } = useI18n();
   const max = Math.max(...items.map((m) => Number(m.totalAmount || 0)), 1);
   return (
     <div className="method-bars">
@@ -97,7 +118,11 @@ function MethodBars({ items }) {
         return (
           <div key={item.method} className="method-row">
             <div className="method-meta">
-              <span>{item.method}</span>
+              <span>
+                {t(`paymentMethod_${String(item.method || "").toLowerCase()}`, {
+                  defaultValue: item.method,
+                })}
+              </span>
               <strong>${Number(item.totalAmount || 0).toLocaleString()}</strong>
             </div>
             <div className="bar-track">
@@ -111,8 +136,9 @@ function MethodBars({ items }) {
 }
 
 function LoadingSkeleton() {
+  const { t } = useI18n();
   return (
-    <section className="panel skeleton-grid" aria-label="Loading content">
+    <section className="panel skeleton-grid" aria-label={t("loadingContent", { defaultValue: "Loading content" })}>
       <div className="skeleton-line lg" />
       <div className="skeleton-line" />
       <div className="skeleton-line" />
@@ -136,6 +162,7 @@ function EmptyState({ title, message }) {
 }
 
 function PaymentResultView({ result, onRetry }) {
+  const { t } = useI18n();
   const success = result?.type === "success";
   const headingRef = useRef(null);
   useEffect(() => {
@@ -158,15 +185,22 @@ function PaymentResultView({ result, onRetry }) {
         {success ? "✓" : "!"}
       </div>
       <h2 ref={headingRef} tabIndex={-1}>
-        {success ? "Payment successful" : "Payment not completed"}
+        {success
+          ? t("paymentSuccessful", { defaultValue: "Payment successful" })
+          : t("paymentNotCompleted", { defaultValue: "Payment not completed" })}
       </h2>
       <p>{result.message}</p>
       {result.transactionId && (
-        <small>Transaction ID: {result.transactionId}</small>
+        <small>
+          {t("transactionId", {
+            id: result.transactionId,
+            defaultValue: `Transaction ID: ${result.transactionId}`,
+          })}
+        </small>
       )}
       {!success && (
         <button type="button" onClick={onRetry}>
-          Try again
+          {t("tryAgain", { defaultValue: "Try again" })}
         </button>
       )}
     </section>
@@ -174,6 +208,7 @@ function PaymentResultView({ result, onRetry }) {
 }
 
 function CheckoutInfoForm({ slug, config, onIntentCreated }) {
+  const { t } = useI18n();
   const [amount, setAmount] = useState(config.fixedAmount || 0);
   const [payerEmail, setPayerEmail] = useState("");
   const [payerName, setPayerName] = useState("");
@@ -185,25 +220,25 @@ function CheckoutInfoForm({ slug, config, onIntentCreated }) {
 
   const validate = () => {
     const errors = {};
-    if (!payerName.trim()) errors.payerName = "Full name is required.";
-    if (!payerEmail.trim()) errors.payerEmail = "Email is required.";
+    if (!payerName.trim()) errors.payerName = t("fieldRequired", { field: t("fullName", { defaultValue: "Full name" }), defaultValue: "Full name is required." });
+    if (!payerEmail.trim()) errors.payerEmail = t("fieldRequired", { field: t("email", { defaultValue: "Email" }), defaultValue: "Email is required." });
     if (config.amountMode === "range") {
       const amt = Number(amount);
       if (!amount || amt < Number(config.minAmount || 0)) {
-        errors.amount = `Amount must be at least $${Number(config.minAmount || 0).toFixed(2)}.`;
+        errors.amount = t("amountMin", { min: Number(config.minAmount || 0).toFixed(2), defaultValue: `Amount must be at least $${Number(config.minAmount || 0).toFixed(2)}.` });
       } else if (config.maxAmount && amt > Number(config.maxAmount)) {
-        errors.amount = `Amount must be at most $${Number(config.maxAmount || 0).toFixed(2)}.`;
+        errors.amount = t("amountMax", { max: Number(config.maxAmount || 0).toFixed(2), defaultValue: `Amount must be at most $${Number(config.maxAmount || 0).toFixed(2)}.` });
       }
     }
     if (
       config.amountMode === "user_entered" &&
       (!amount || Number(amount) <= 0)
     ) {
-      errors.amount = "Please enter a valid amount.";
+      errors.amount = t("validAmountRequired", { defaultValue: "Please enter a valid amount." });
     }
     config.customFields?.forEach((field) => {
       if (field.required && !customResponses[field.id]) {
-        errors[field.id] = `${field.label} is required.`;
+        errors[field.id] = t("fieldRequired", { field: field.label, defaultValue: `${field.label} is required.` });
       }
     });
     return errors;
@@ -225,17 +260,21 @@ function CheckoutInfoForm({ slug, config, onIntentCreated }) {
     setSubmitting(true);
     setErrorMessage("");
     try {
-      const payload = await apiRequest(`/public/pay/${slug}/create-payment-intent`, {
-        method: "POST",
-        body: {
-          amount: Number(amount),
-          payerEmail,
-          payerName,
-          payment_method_type: paymentMethodType,
-          paymentMethod: paymentMethodType === "us_bank_account" ? "ach" : "card",
-          fieldResponses: customResponses,
+      const payload = await apiRequest(
+        `/public/pay/${slug}/create-payment-intent`,
+        {
+          method: "POST",
+          body: {
+            amount: Number(amount),
+            payerEmail,
+            payerName,
+            payment_method_type: paymentMethodType,
+            paymentMethod:
+              paymentMethodType === "us_bank_account" ? "ach" : "card",
+            fieldResponses: customResponses,
+          },
         },
-      });
+      );
       onIntentCreated({
         clientSecret: payload.clientSecret,
         paymentIntentId: payload.paymentIntentId,
@@ -251,12 +290,17 @@ function CheckoutInfoForm({ slug, config, onIntentCreated }) {
   };
 
   return (
-    <form className="public-form" onSubmit={handleContinue} noValidate aria-label="Payment form">
-      <p className="required-note">* Required fields</p>
+    <form
+      className="public-form"
+      onSubmit={handleContinue}
+      noValidate
+      aria-label="Payment form"
+    >
+      <p className="required-note">{t("requiredFieldsNote", { defaultValue: "* Required fields" })}</p>
       <fieldset className="form-fieldset">
-        <legend>Your Information</legend>
+        <legend>{t("yourInformation", { defaultValue: "Your Information" })}</legend>
         <div className="field-group">
-          <label htmlFor="field-payerName">Full name *</label>
+          <label htmlFor="field-payerName">{t("fullName", { defaultValue: "Full name" })} *</label>
           <input
             id="field-payerName"
             value={payerName}
@@ -274,7 +318,7 @@ function CheckoutInfoForm({ slug, config, onIntentCreated }) {
           )}
         </div>
         <div className="field-group">
-          <label htmlFor="field-payerEmail">Email *</label>
+          <label htmlFor="field-payerEmail">{t("email", { defaultValue: "Email" })} *</label>
           <input
             id="field-payerEmail"
             type="email"
@@ -296,7 +340,7 @@ function CheckoutInfoForm({ slug, config, onIntentCreated }) {
 
       {config.amountMode === "fixed" && (
         <div className="amount-display">
-          <span className="amount-label">Amount</span>
+          <span className="amount-label">{t("amount", { defaultValue: "Amount" })}</span>
           <span className="amount-value">
             ${Number(config.fixedAmount || 0).toFixed(2)}
           </span>
@@ -328,7 +372,7 @@ function CheckoutInfoForm({ slug, config, onIntentCreated }) {
       )}
       {config.amountMode === "user_entered" && (
         <div className="field-group">
-          <label htmlFor="field-amount">Amount *</label>
+          <label htmlFor="field-amount">{t("amount", { defaultValue: "Amount" })} *</label>
           <input
             id="field-amount"
             type="number"
@@ -350,7 +394,7 @@ function CheckoutInfoForm({ slug, config, onIntentCreated }) {
 
       {config.customFields?.length > 0 && (
         <fieldset className="form-fieldset">
-          <legend>Additional Details</legend>
+          <legend>{t("additionalDetails", { defaultValue: "Additional Details" })}</legend>
           {config.customFields.map((field) => (
             <div
               key={field.id}
@@ -403,7 +447,7 @@ function CheckoutInfoForm({ slug, config, onIntentCreated }) {
                         fieldErrors[field.id] ? `err-${field.id}` : undefined
                       }
                     >
-                      <option value="">Select an option</option>
+                      <option value="">{t("selectAnOption", { defaultValue: "Select an option" })}</option>
                       {(field.options || []).map((opt) => (
                         <option key={opt} value={opt}>
                           {opt}
@@ -447,7 +491,7 @@ function CheckoutInfoForm({ slug, config, onIntentCreated }) {
       )}
 
       <fieldset className="form-fieldset">
-        <legend>Payment Method</legend>
+        <legend>{t("paymentMethod", { defaultValue: "Payment method" })}</legend>
         <div className="payment-method-tabs" role="tablist">
           <button
             type="button"
@@ -456,7 +500,7 @@ function CheckoutInfoForm({ slug, config, onIntentCreated }) {
             className={paymentMethodType === "card_wallet" ? "active" : ""}
             onClick={() => setPaymentMethodType("card_wallet")}
           >
-            💳 Card &amp; Digital Wallet
+            {t("cardAndDigitalWallet", { defaultValue: "Card & Digital Wallet" })}
           </button>
           <button
             type="button"
@@ -465,23 +509,28 @@ function CheckoutInfoForm({ slug, config, onIntentCreated }) {
             className={paymentMethodType === "us_bank_account" ? "active" : ""}
             onClick={() => setPaymentMethodType("us_bank_account")}
           >
-            🏦 Bank Transfer (ACH)
+            {t("bankTransferAch", { defaultValue: "Bank Transfer (ACH)" })}
           </button>
         </div>
       </fieldset>
 
       {errorMessage && (
-        <div className="error-banner" role="alert">{errorMessage}</div>
+        <div className="error-banner" role="alert">
+          {errorMessage}
+        </div>
       )}
 
       <button type="submit" className="pay-btn" disabled={submitting}>
-        {submitting ? "Processing..." : "Continue to Payment"}
+        {submitting
+          ? t("processing", { defaultValue: "Processing..." })
+          : t("continueToPayment", { defaultValue: "Continue to Payment" })}
       </button>
     </form>
   );
 }
 
 function PaymentStepForm({ slug, intentData, onResult }) {
+  const { t } = useI18n();
   const [errorMessage, setErrorMessage] = useState(null);
 
   const handleSuccess = async () => {
@@ -493,13 +542,16 @@ function PaymentStepForm({ slug, intentData, onResult }) {
       if (sync.status === "success") {
         onResult({
           type: "success",
-          message: "Payment successful. Confirmation has been sent.",
+          message: t("paymentSuccessConfirmation", { defaultValue: "Payment successful. Confirmation has been sent." }),
           transactionId: sync.transactionId,
         });
       } else {
         onResult({
           type: "failure",
-          message: `Payment status: ${sync.status}. Please check transaction details.`,
+          message: t("paymentStatusMessage", {
+            status: sync.status,
+            defaultValue: `Payment status: ${sync.status}. Please check transaction details.`,
+          }),
           transactionId: sync.transactionId,
         });
       }
@@ -511,7 +563,9 @@ function PaymentStepForm({ slug, intentData, onResult }) {
   return (
     <div className="payment-container">
       {errorMessage && (
-        <div className="error-banner" role="alert">{errorMessage}</div>
+        <div className="error-banner" role="alert">
+          {errorMessage}
+        </div>
       )}
       <div role="tabpanel">
         {intentData.paymentMethodType === "card_wallet" ? (
@@ -529,6 +583,7 @@ function PaymentStepForm({ slug, intentData, onResult }) {
 }
 
 function PublicPaymentPage() {
+  const { t } = useI18n();
   const { slug } = useParams();
   const [config, setConfig] = useState(null);
   const [result, setResult] = useState(null);
@@ -563,14 +618,18 @@ function PublicPaymentPage() {
     return (
       <main className="public-shell">
         <EmptyState
-          title="Payment page unavailable"
-          message={error || "Please verify this URL and try again."}
+          title={t("payUnavailable", { defaultValue: "Payment page unavailable" })}
+          message={error || t("verifyUrlTryAgain", { defaultValue: "Please verify this URL and try again." })}
         />
       </main>
     );
   }
 
   const headerTextColor = getContrastColor(config.brandColor);
+  const localizedTitle = localizeSeededText(config.title, t);
+  const localizedSubtitle = localizeSeededText(config.subtitle, t);
+  const localizedHeaderMessage = localizeSeededText(config.headerMessage, t);
+  const localizedFooterMessage = localizeSeededText(config.footerMessage, t);
 
   const handleRetry = () => {
     setResult(null);
@@ -590,22 +649,22 @@ function PublicPaymentPage() {
           {config.logoUrl && (
             <img
               src={config.logoUrl}
-              alt={`${config.title} logo`}
+              alt={`${localizedTitle} logo`}
               className="public-logo"
               onError={(e) => {
                 e.target.style.display = "none";
               }}
             />
           )}
-          <h1>{config.title}</h1>
-          {config.subtitle && (
-            <p className="public-subtitle">{config.subtitle}</p>
+          <h1>{localizedTitle}</h1>
+          {localizedSubtitle && (
+            <p className="public-subtitle">{localizedSubtitle}</p>
           )}
         </header>
         <div className="public-body">
           {config.description && <p className="subtle">{config.description}</p>}
           <div className="preview-banner">
-            {config.headerMessage || "Complete secure payment below."}
+            {localizedHeaderMessage || t("completeSecurePaymentBelow", { defaultValue: "Complete secure payment below." })}
           </div>
           {result ? (
             <PaymentResultView result={result} onRetry={handleRetry} />
@@ -615,14 +674,25 @@ function PublicPaymentPage() {
               in your frontend environment.
             </p>
           ) : !intentData ? (
-            <CheckoutInfoForm slug={slug} config={config} onIntentCreated={setIntentData} />
+            <CheckoutInfoForm
+              slug={slug}
+              config={config}
+              onIntentCreated={setIntentData}
+            />
           ) : (
-            <Elements stripe={stripePromise} options={{ clientSecret: intentData.clientSecret }}>
-              <PaymentStepForm slug={slug} intentData={intentData} onResult={setResult} />
+            <Elements
+              stripe={stripePromise}
+              options={{ clientSecret: intentData.clientSecret }}
+            >
+              <PaymentStepForm
+                slug={slug}
+                intentData={intentData}
+                onResult={setResult}
+              />
             </Elements>
           )}
-          {config.footerMessage && (
-            <footer className="public-footer">{config.footerMessage}</footer>
+          {localizedFooterMessage && (
+            <footer className="public-footer">{localizedFooterMessage}</footer>
           )}
         </div>
       </section>
@@ -631,6 +701,7 @@ function PublicPaymentPage() {
 }
 
 function AuthPage({ mode }) {
+  const { t } = useI18n();
   const navigate = useNavigate();
   const existingToken = localStorage.getItem("qpp_token");
   const [loading, setLoading] = useState(false);
@@ -717,7 +788,10 @@ function AuthPage({ mode }) {
         navigate("/dashboard", { replace: true });
         return;
       }
-      setAuthNotice(signupResponse?.message || "Account created successfully. You can now sign in.");
+      setAuthNotice(
+        signupResponse?.message ||
+          "Account created successfully. You can now sign in.",
+      );
     } catch (err) {
       setError(err.message);
     } finally {
@@ -737,7 +811,10 @@ function AuthPage({ mode }) {
           navigate("/dashboard", { replace: true });
           return;
         }
-        setAuthNotice(signupResponse?.message || "Account created successfully. You can now sign in.");
+        setAuthNotice(
+          signupResponse?.message ||
+            "Account created successfully. You can now sign in.",
+        );
         return;
       }
       const { error: oauthError } = await supabase.auth.signInWithOAuth({
@@ -781,8 +858,8 @@ function AuthPage({ mode }) {
     <main className="auth-shell">
       <section className="auth-card">
         <img src={qppPlainLogo} alt="QPP" className="auth-brand-logo" />
-        <p className="eyebrow">Waystar Inspired Experience</p>
-        <h1>{isSignup ? "Create Company Account" : "Sign In"}</h1>
+        <p className="eyebrow">{t("waystarInspiredExperience", { defaultValue: "Waystar Inspired Experience" })}</p>
+        <h1>{isSignup ? t("createCompanyAccount", { defaultValue: "Create Company Account" }) : t("signIn", { defaultValue: "Sign In" })}</h1>
         <p className="auth-subtitle">
           {isSignup
             ? "Create your company account to manage branded payment pages."
@@ -796,7 +873,7 @@ function AuthPage({ mode }) {
           {isSignup && (
             <>
               <div className="field-group">
-                <label htmlFor="company-name">Company name</label>
+                <label htmlFor="company-name">{t("companyName", { defaultValue: "Company name" })}</label>
                 <input
                   id="company-name"
                   type="text"
@@ -807,7 +884,7 @@ function AuthPage({ mode }) {
                 />
               </div>
               <div className="field-group">
-                <label htmlFor="company-logo">Company logo</label>
+                <label htmlFor="company-logo">{t("companyLogo", { defaultValue: "Company logo" })}</label>
                 <input
                   id="company-logo"
                   type="file"
@@ -831,7 +908,7 @@ function AuthPage({ mode }) {
             </>
           )}
           <div className="field-group">
-            <label htmlFor="login-email">Email address</label>
+            <label htmlFor="login-email">{t("emailAddress", { defaultValue: "Email address" })}</label>
             <input
               id="login-email"
               type={isSignup ? "email" : "text"}
@@ -844,7 +921,7 @@ function AuthPage({ mode }) {
             />
           </div>
           <div className="field-group">
-            <label htmlFor="login-password">Password</label>
+            <label htmlFor="login-password">{t("password", { defaultValue: "Password" })}</label>
             <input
               id="login-password"
               type="password"
@@ -862,8 +939,8 @@ function AuthPage({ mode }) {
                 ? "Creating account..."
                 : "Signing in..."
               : isSignup
-                ? "Create account"
-                : "Sign in"}
+                ? t("createAccount", { defaultValue: "Create account" })
+                : t("signIn", { defaultValue: "Sign in" })}
           </button>
         </form>
         <button
@@ -872,8 +949,15 @@ function AuthPage({ mode }) {
           onClick={handleGoogleAuth}
           disabled={loading}
         >
-          <img src={googleLogo} alt="" className="google-icon" aria-hidden="true" />
-          {isSignup ? "Create with Google" : "Continue with Google"}
+          <img
+            src={googleLogo}
+            alt=""
+            className="google-icon"
+            aria-hidden="true"
+          />
+          {isSignup
+            ? t("createWithGoogle", { defaultValue: "Create with Google" })
+            : t("continueWithGoogle", { defaultValue: "Continue with Google" })}
         </button>
         <p className="auth-switch-row">
           {isSignup ? "Already have an account?" : "Need an account?"}{" "}
@@ -896,6 +980,7 @@ function AuthPage({ mode }) {
 }
 
 function AdminApp() {
+  const { lang, setLang, t } = useI18n();
   const [token, setToken] = useState(localStorage.getItem("qpp_token") || "");
   const [user, setUser] = useState(null);
   const [pages, setPages] = useState([]);
@@ -912,20 +997,14 @@ function AdminApp() {
     return saved === "light" || saved === "dark" ? saved : "dark";
   });
 
-  const [pageForm, setPageForm] = useState({
-    slug: "",
-    title: "",
-    subtitle: "Secure, self-service payment experience",
-    description: "",
-    logoUrl: "",
-    amountMode: "fixed",
-    fixedAmount: 25,
-    minAmount: 0,
-    maxAmount: 0,
-    glCodes: "GL-100",
-    brandColor: "#0f63ff",
-    headerMessage: "Thank you for choosing our organization",
-    footerMessage: "Need help? Reach our billing support team.",
+  const [pageForm, setPageForm] = useState(PAGE_FORM_DEFAULTS);
+  const [editingPageId, setEditingPageId] = useState(null);
+  const [reportFilters, setReportFilters] = useState({
+    from: "",
+    to: "",
+    pageId: "",
+    status: "",
+    paymentMethod: "",
   });
 
   const [customFieldsBuilder, setCustomFieldsBuilder] = useState([]);
@@ -967,7 +1046,21 @@ function AdminApp() {
     [user],
   );
 
-  const fetchDashboard = async (activeToken) => {
+  const buildQueryString = (filters) => {
+    const params = new URLSearchParams();
+    Object.entries(filters).forEach(([key, value]) => {
+      if (
+        value !== undefined &&
+        value !== null &&
+        String(value).trim() !== ""
+      ) {
+        params.set(key, value);
+      }
+    });
+    return params.toString();
+  };
+
+  const fetchDashboard = async (activeToken, filters = reportFilters) => {
     const authToken = activeToken || token;
     if (!authToken) return;
     setLoading(true);
@@ -975,17 +1068,21 @@ function AdminApp() {
     try {
       const me = await apiRequest("/auth/me", { token: authToken });
       setUser(me);
+      const txnQuery = buildQueryString(filters);
       const [pageList, reportSummary, txns] = await Promise.all([
         apiRequest("/admin/pages", { token: authToken }),
         apiRequest("/admin/reports/summary", { token: authToken }),
-        apiRequest("/admin/reports/transactions", { token: authToken }),
+        apiRequest(
+          `/admin/reports/transactions${txnQuery ? `?${txnQuery}` : ""}`,
+          { token: authToken },
+        ),
       ]);
       const insightData = await apiRequest("/admin/reports/insights", {
         token: authToken,
       });
       setPages(pageList);
       setSummary(reportSummary);
-      setTransactions(txns.slice(0, 8));
+      setTransactions(txns);
       setInsights(insightData);
     } catch (err) {
       setError(err.message);
@@ -1007,74 +1104,75 @@ function AdminApp() {
     };
   }, [theme]);
 
+  const resetPageBuilder = () => {
+    setPageForm(PAGE_FORM_DEFAULTS);
+    setCustomFieldsBuilder([]);
+    setEditingPageId(null);
+  };
+
+  const preparePagePayload = () => ({
+    slug: pageForm.slug,
+    title: pageForm.title,
+    subtitle: pageForm.subtitle,
+    description: pageForm.description,
+    logoUrl: pageForm.logoUrl,
+    amountMode: pageForm.amountMode,
+    fixedAmount:
+      pageForm.amountMode === "fixed"
+        ? Number(pageForm.fixedAmount)
+        : undefined,
+    minAmount:
+      pageForm.amountMode === "range" ? Number(pageForm.minAmount) : undefined,
+    maxAmount:
+      pageForm.amountMode === "range" ? Number(pageForm.maxAmount) : undefined,
+    glCodes: pageForm.glCodes
+      .split(",")
+      .map((code) => code.trim())
+      .filter(Boolean),
+    brandColor: pageForm.brandColor,
+    headerMessage: pageForm.headerMessage,
+    footerMessage: pageForm.footerMessage,
+    emailTemplate: pageForm.emailTemplate,
+    customFields: customFieldsBuilder.map((f) => ({
+      id: f.id,
+      label: f.label,
+      type: f.type,
+      required: f.required,
+      options:
+        f.type === "dropdown"
+          ? f.options
+              .split(",")
+              .map((o) => o.trim())
+              .filter(Boolean)
+          : [],
+      order: f.order,
+      placeholder: f.placeholder || "",
+      helperText: f.helperText || "",
+    })),
+  });
+
   const handleCreatePage = async (e) => {
     e.preventDefault();
     if (!canEditPages) return;
     setLoading(true);
     setError("");
     try {
-      await apiRequest("/admin/pages", {
-        method: "POST",
-        token,
-        body: {
-          slug: pageForm.slug,
-          title: pageForm.title,
-          subtitle: pageForm.subtitle,
-          description: pageForm.description,
-          logoUrl: pageForm.logoUrl,
-          amountMode: pageForm.amountMode,
-          fixedAmount:
-            pageForm.amountMode === "fixed"
-              ? Number(pageForm.fixedAmount)
-              : undefined,
-          minAmount:
-            pageForm.amountMode === "range"
-              ? Number(pageForm.minAmount)
-              : undefined,
-          maxAmount:
-            pageForm.amountMode === "range"
-              ? Number(pageForm.maxAmount)
-              : undefined,
-          glCodes: pageForm.glCodes
-            .split(",")
-            .map((code) => code.trim())
-            .filter(Boolean),
-          brandColor: pageForm.brandColor,
-          headerMessage: pageForm.headerMessage,
-          footerMessage: pageForm.footerMessage,
-          customFields: customFieldsBuilder.map((f) => ({
-            id: f.id,
-            label: f.label,
-            type: f.type,
-            required: f.required,
-            options:
-              f.type === "dropdown"
-                ? f.options
-                    .split(",")
-                    .map((o) => o.trim())
-                    .filter(Boolean)
-                : [],
-            order: f.order,
-          })),
-        },
-      });
-      setPageForm({
-        slug: "",
-        title: "",
-        subtitle: "Secure, self-service payment experience",
-        description: "",
-        logoUrl: "",
-        amountMode: "fixed",
-        fixedAmount: 25,
-        minAmount: 0,
-        maxAmount: 0,
-        glCodes: "GL-100",
-        brandColor: "#0f63ff",
-        headerMessage: "Thank you for choosing our organization",
-        footerMessage: "Need help? Reach our billing support team.",
-      });
-      setCustomFieldsBuilder([]);
-      await fetchDashboard(token);
+      const payload = preparePagePayload();
+      if (editingPageId) {
+        await apiRequest(`/admin/pages/${editingPageId}`, {
+          method: "PUT",
+          token,
+          body: payload,
+        });
+      } else {
+        await apiRequest("/admin/pages", {
+          method: "POST",
+          token,
+          body: payload,
+        });
+      }
+      resetPageBuilder();
+      await fetchDashboard(token, reportFilters);
       setView("pages");
     } catch (err) {
       setError(err.message);
@@ -1099,7 +1197,7 @@ function AdminApp() {
         token,
         body: { isActive: !currentActive },
       });
-      await fetchDashboard(token);
+      await fetchDashboard(token, reportFilters);
     } catch (err) {
       setError(err.message);
     }
@@ -1118,7 +1216,7 @@ function AdminApp() {
         method: "POST",
         token,
       });
-      await fetchDashboard(token);
+      await fetchDashboard(token, reportFilters);
       await fetchVersions(pageId);
     } catch (err) {
       setError(err.message);
@@ -1140,7 +1238,7 @@ function AdminApp() {
         token,
         body: { versionNumber: target.versionNumber },
       });
-      await fetchDashboard(token);
+      await fetchDashboard(token, reportFilters);
       await fetchVersions(pageId);
     } catch (err) {
       setError(err.message);
@@ -1157,6 +1255,71 @@ function AdminApp() {
     setTransactions([]);
   };
 
+  const startEditingPage = (page) => {
+    setEditingPageId(page.id);
+    setPageForm({
+      slug: page.slug || "",
+      title: page.title || "",
+      subtitle: page.subtitle || "",
+      description: page.description || "",
+      logoUrl: page.logoUrl || "",
+      amountMode: page.amountMode || "fixed",
+      fixedAmount: page.fixedAmount ?? 0,
+      minAmount: page.minAmount ?? 0,
+      maxAmount: page.maxAmount ?? 0,
+      glCodes: (page.glCodes || []).join(", "),
+      brandColor: page.brandColor || "#0f63ff",
+      headerMessage: page.headerMessage || "",
+      footerMessage: page.footerMessage || "",
+      emailTemplate: page.emailTemplate || PAGE_FORM_DEFAULTS.emailTemplate,
+    });
+    setCustomFieldsBuilder(
+      (page.customFields || []).map((field, idx) => ({
+        id: field.id || `f${Date.now()}-${idx}`,
+        label: field.label || "",
+        type: field.type || "text",
+        required: Boolean(field.required),
+        options: (field.options || []).join(", "),
+        order: field.order ?? idx,
+        placeholder: field.placeholder || "",
+        helperText: field.helperText || "",
+      })),
+    );
+    setView("create");
+  };
+
+  const applyReportFilters = async (e) => {
+    e.preventDefault();
+    await fetchDashboard(token, reportFilters);
+  };
+
+  const exportTransactionsCsv = async () => {
+    try {
+      const query = buildQueryString(reportFilters);
+      const response = await fetch(
+        `${API_BASE}/admin/reports/transactions.csv${query ? `?${query}` : ""}`,
+        {
+          headers: { Authorization: `Bearer ${token}` },
+        },
+      );
+      if (!response.ok) {
+        throw new Error("Failed to export CSV");
+      }
+      const csvText = await response.text();
+      const blob = new Blob([csvText], { type: "text/csv" });
+      const blobUrl = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = blobUrl;
+      link.download = "transactions.csv";
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(blobUrl);
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
   if (!token) return <Navigate to="/login" replace />;
 
   const isOwner = user?.role === "owner";
@@ -1164,8 +1327,21 @@ function AdminApp() {
   const ownerCompanyLogo = isOwner ? user?.companyLogoUrl?.trim() : "";
   const accountDisplayName = ownerCompanyName || "Waystar QPP";
   const accountSubtitle = isOwner
-    ? "Owner workspace"
-    : `${(user?.role || "viewer").charAt(0).toUpperCase()}${(user?.role || "viewer").slice(1)} workspace`;
+    ? t("ownerWorkspace", { defaultValue: "Owner workspace" })
+    : `${t(`role_${user?.role || "viewer"}`, {
+        defaultValue:
+          `${(user?.role || "viewer").charAt(0).toUpperCase()}${(user?.role || "viewer").slice(1)}`,
+      })} ${t("workspace", { defaultValue: "workspace" })}`;
+  const collectionVelocityData = useMemo(() => {
+    const trend = insights?.trend || [];
+    const revenueValues = trend.map((entry) => Number(entry.revenue || 0));
+    if (revenueValues.some((value) => value > 0)) return revenueValues;
+    const transactionValues = trend.map((entry) =>
+      Number(entry.transactionCount || 0),
+    );
+    if (transactionValues.some((value) => value > 0)) return transactionValues;
+    return [0];
+  }, [insights]);
 
   return (
     <div className="app-shell">
@@ -1174,12 +1350,15 @@ function AdminApp() {
           <div className="sidebar-brand">
             <img src={qppPlainLogo} alt="QPP" className="sidebar-qpp-logo" />
             <div>
-              <h2>Quick Payment Pages</h2>
-              <p className="sidebar-brand-subtext">Control Center</p>
+              <h2>{t("quickPaymentPages", { defaultValue: "Quick Payment Pages" })}</h2>
+              <p className="sidebar-brand-subtext">{t("healthcarePaymentsControlCenter", { defaultValue: "Control Center" })}</p>
             </div>
           </div>
           <div className="workspace-profile">
-            <div className="workspace-logo-wrap" aria-hidden={ownerCompanyLogo ? undefined : "true"}>
+            <div
+              className="workspace-logo-wrap"
+              aria-hidden={ownerCompanyLogo ? undefined : "true"}
+            >
               {ownerCompanyLogo ? (
                 <img
                   src={ownerCompanyLogo}
@@ -1210,17 +1389,36 @@ function AdminApp() {
                   onClick={() => setView(item)}
                   aria-current={view === item ? "page" : undefined}
                 >
-                  {item[0].toUpperCase() + item.slice(1)}
+                  {t(item, { defaultValue: item[0].toUpperCase() + item.slice(1) })}
                 </button>
               ),
             )}
           </nav>
         </div>
         <div className="sidebar-footer">
+          <div className="sidebar-lang-switcher">
+            <label htmlFor="lang-select-sidebar">
+              {t("language", { defaultValue: "Language" })}
+            </label>
+            <select
+              id="lang-select-sidebar"
+              value={lang}
+              onChange={(e) => setLang(e.target.value)}
+              aria-label={t("language", { defaultValue: "Language" })}
+            >
+              {LANGUAGE_OPTIONS.map((option) => (
+                <option key={option.code} value={option.code}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </div>
           <button
             className="theme-btn"
             type="button"
-            onClick={() => setTheme((prev) => (prev === "dark" ? "light" : "dark"))}
+            onClick={() =>
+              setTheme((prev) => (prev === "dark" ? "light" : "dark"))
+            }
             aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} mode`}
           >
             {theme === "dark" ? "Light mode" : "Dark mode"}
@@ -1237,7 +1435,7 @@ function AdminApp() {
 
       <main className="content-shell">
         <header className="dashboard-header">
-          <p className="eyebrow">Healthcare Payments Control Center</p>
+          <p className="eyebrow">{t("healthcarePaymentsControlCenter", { defaultValue: "Control Center" })}</p>
           <h1>{accountDisplayName}</h1>
           <p className="subtle">
             Unified overview for payment pages, transactions, and distribution.
@@ -1253,11 +1451,11 @@ function AdminApp() {
           <>
             <section className="stats-grid">
               <StatCard
-                label="Total Payments"
+                label={t("totalPayments", { defaultValue: "Total Payments" })}
                 value={summary ? summary.totalPayments.toLocaleString() : "--"}
               />
               <StatCard
-                label="Amount Collected"
+                label={t("amountCollected", { defaultValue: "Amount Collected" })}
                 value={
                   summary
                     ? `$${Number(summary.totalAmountCollected || 0).toLocaleString()}`
@@ -1265,7 +1463,7 @@ function AdminApp() {
                 }
               />
               <StatCard
-                label="Average Payment"
+                label={t("averagePayment", { defaultValue: "Average Payment" })}
                 value={
                   summary
                     ? `$${Number(summary.averagePaymentAmount || 0).toFixed(2)}`
@@ -1276,27 +1474,18 @@ function AdminApp() {
             {loading ? (
               <LoadingSkeleton />
             ) : (
-              <>
+              <div className="view-stack">
                 <section className="panel chart-panel">
                   <div>
-                    <h3>Collection velocity</h3>
+                    <h3>{t("collectionVelocity", { defaultValue: "Collection velocity" })}</h3>
                     <p className="subtle">
-                      A visual trend of payment movement in your current cycle.
+                      {t("collectionVelocityDesc", { defaultValue: "Last 14-day trend based on recorded transactions." })}
                     </p>
                   </div>
-                  <MiniAreaChart
-                    values={[
-                      Number(summary?.averagePaymentAmount || 10),
-                      Number(summary?.averagePaymentAmount || 10) * 1.2,
-                      Number(summary?.averagePaymentAmount || 10) * 0.85,
-                      Number(summary?.averagePaymentAmount || 10) * 1.45,
-                      Number(summary?.averagePaymentAmount || 10) * 1.18,
-                      Number(summary?.averagePaymentAmount || 10) * 1.7,
-                    ]}
-                  />
+                  <MiniAreaChart values={collectionVelocityData} />
                 </section>
                 <section className="panel">
-                  <h3>Payment method mix</h3>
+                  <h3>{t("paymentMethodMix", { defaultValue: "Payment method mix" })}</h3>
                   {summary?.byPaymentMethod?.length ? (
                     <MethodBars items={summary.byPaymentMethod} />
                   ) : (
@@ -1307,7 +1496,7 @@ function AdminApp() {
                   )}
                 </section>
                 <section className="panel">
-                  <h3>Payment pages</h3>
+                  <h3>{t("paymentPages", { defaultValue: "Payment pages" })}</h3>
                   <p>
                     {pages.length} configured pages across your payment
                     portfolio.
@@ -1316,7 +1505,7 @@ function AdminApp() {
                 <section className="panel">
                   <ActivityFeed authToken={token} />
                 </section>
-              </>
+              </div>
             )}
           </>
         )}
@@ -1330,7 +1519,7 @@ function AdminApp() {
               message="Perform some payment activity to populate analytics."
             />
           ) : (
-            <>
+            <div className="view-stack">
               <section className="stats-grid">
                 <StatCard
                   label="Page Views"
@@ -1346,11 +1535,11 @@ function AdminApp() {
                 />
               </section>
               <section className="panel">
-                <h3>Conversion funnel</h3>
+                <h3>{t("conversionFunnel", { defaultValue: "Conversion funnel" })}</h3>
                 <div className="method-bars">
                   <div className="method-row">
                     <div className="method-meta">
-                      <span>View to Checkout</span>
+                      <span>{t("viewToCheckout", { defaultValue: "View to Checkout" })}</span>
                       <strong>
                         {(insights.funnel.viewToCheckoutRate * 100).toFixed(1)}%
                       </strong>
@@ -1366,7 +1555,7 @@ function AdminApp() {
                   </div>
                   <div className="method-row">
                     <div className="method-meta">
-                      <span>Checkout to Success</span>
+                      <span>{t("checkoutToSuccess", { defaultValue: "Checkout to Success" })}</span>
                       <strong>
                         {(insights.funnel.checkoutToSuccessRate * 100).toFixed(
                           1,
@@ -1386,16 +1575,16 @@ function AdminApp() {
                 </div>
               </section>
               <section className="panel">
-                <h3>Top page performance</h3>
+                <h3>{t("topPagePerformance", { defaultValue: "Top page performance" })}</h3>
                 <div className="table-wrap">
                   <table aria-label="Top page performance">
                     <thead>
                       <tr>
-                        <th scope="col">Page</th>
-                        <th scope="col">Views</th>
-                        <th scope="col">Transactions</th>
-                        <th scope="col">Success</th>
-                        <th scope="col">Revenue</th>
+                        <th scope="col">{t("page", { defaultValue: "Page" })}</th>
+                        <th scope="col">{t("views", { defaultValue: "Views" })}</th>
+                        <th scope="col">{t("transactions", { defaultValue: "Transactions" })}</th>
+                        <th scope="col">{t("success", { defaultValue: "Success" })}</th>
+                        <th scope="col">{t("revenue", { defaultValue: "Revenue" })}</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -1412,7 +1601,7 @@ function AdminApp() {
                   </table>
                 </div>
               </section>
-            </>
+            </div>
           ))}
 
         {view === "pages" &&
@@ -1426,16 +1615,16 @@ function AdminApp() {
           ) : (
             <>
               <section className="panel">
-                <h3>Configured pages</h3>
+                <h3>{t("configuredPages", { defaultValue: "Configured pages" })}</h3>
                 <div className="table-wrap">
                   <table aria-label="Payment pages">
                     <thead>
                       <tr>
-                        <th scope="col">Title</th>
-                        <th scope="col">Slug</th>
-                        <th scope="col">Status</th>
-                        <th scope="col">Amount mode</th>
-                        <th scope="col">Actions</th>
+                        <th scope="col">{t("title", { defaultValue: "Title" })}</th>
+                        <th scope="col">{t("slug", { defaultValue: "Slug" })}</th>
+                        <th scope="col">{t("status", { defaultValue: "Status" })}</th>
+                        <th scope="col">{t("amountMode", { defaultValue: "Amount mode" })}</th>
+                        <th scope="col">{t("actions", { defaultValue: "Actions" })}</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -1443,7 +1632,11 @@ function AdminApp() {
                         <tr key={page.id}>
                           <td>{page.title}</td>
                           <td>/{page.slug}</td>
-                          <td>{page.isActive ? "Active" : "Disabled"}</td>
+                          <td>
+                            {page.isActive
+                              ? t("active", { defaultValue: "Active" })
+                              : t("disabled", { defaultValue: "Disabled" })}
+                          </td>
                           <td>{page.amountMode}</td>
                           <td>
                             <button
@@ -1493,6 +1686,13 @@ function AdminApp() {
                                 >
                                   Versions
                                 </button>
+                                <button
+                                  className="tiny-btn"
+                                  onClick={() => startEditingPage(page)}
+                                  aria-label={`Edit ${page.title}`}
+                                >
+                                  Edit
+                                </button>
                                 {page.hasDraft && (
                                   <button
                                     className="tiny-btn"
@@ -1519,8 +1719,8 @@ function AdminApp() {
                 </div>
                 {Object.entries(pageVersions).map(([pageId, versions]) => (
                   <div key={pageId} className="versions-block">
-                    <h4>
-                      Versions for page{" "}
+                      <h4>
+                      {t("versionsForPage", { defaultValue: "Versions for page" })}{" "}
                       {pages.find((p) => p.id === pageId)?.title || pageId}
                     </h4>
                     <ul>
@@ -1536,10 +1736,12 @@ function AdminApp() {
               </section>
               {selectedPage && (
                 <section className="panel">
-                  <h3>Distribute — {selectedPage.title}</h3>
+                  <h3>{t("distributePanelTitle", { title: selectedPage.title, defaultValue: `Distribute - ${selectedPage.title}` })}</h3>
                   <DistributionPanel
+                    pageId={selectedPage.id}
                     pageSlug={selectedPage.slug}
                     pageTitle={selectedPage.title}
+                    authToken={token}
                   />
                 </section>
               )}
@@ -1549,7 +1751,9 @@ function AdminApp() {
         {view === "create" && (
           <div className="create-grid">
             <section className="panel">
-              <h3>Create payment page</h3>
+              <h3>
+                {editingPageId ? "Edit payment page" : "Create payment page"}
+              </h3>
               {!canEditPages && (
                 <p className="error">
                   Your role is read-only. Ask an owner to grant editor access.
@@ -1561,7 +1765,7 @@ function AdminApp() {
                 aria-label="Create payment page"
               >
                 <div className="field-group">
-                  <label htmlFor="cf-title">Page title *</label>
+                  <label htmlFor="cf-title">{t("pageTitle", { defaultValue: "Page title" })} *</label>
                   <input
                     id="cf-title"
                     value={pageForm.title}
@@ -1573,7 +1777,7 @@ function AdminApp() {
                   />
                 </div>
                 <div className="field-group">
-                  <label htmlFor="cf-subtitle">Subtitle</label>
+                  <label htmlFor="cf-subtitle">{t("subtitle", { defaultValue: "Subtitle" })}</label>
                   <input
                     id="cf-subtitle"
                     value={pageForm.subtitle}
@@ -1583,7 +1787,7 @@ function AdminApp() {
                   />
                 </div>
                 <div className="field-group">
-                  <label htmlFor="cf-description">Description</label>
+                  <label htmlFor="cf-description">{t("description", { defaultValue: "Description" })}</label>
                   <input
                     id="cf-description"
                     value={pageForm.description}
@@ -1596,7 +1800,7 @@ function AdminApp() {
                   />
                 </div>
                 <div className="field-group">
-                  <label htmlFor="cf-logoUrl">Logo URL</label>
+                  <label htmlFor="cf-logoUrl">{t("logoUrl", { defaultValue: "Logo URL" })}</label>
                   <input
                     id="cf-logoUrl"
                     type="url"
@@ -1608,7 +1812,7 @@ function AdminApp() {
                   />
                 </div>
                 <div className="field-group">
-                  <label htmlFor="cf-slug">URL slug *</label>
+                  <label htmlFor="cf-slug">{t("urlSlug", { defaultValue: "URL slug" })} *</label>
                   <input
                     id="cf-slug"
                     value={pageForm.slug}
@@ -1623,7 +1827,7 @@ function AdminApp() {
                   />
                 </div>
                 <div className="field-group">
-                  <label htmlFor="cf-brandColor">Brand color (hex)</label>
+                  <label htmlFor="cf-brandColor">{t("brandColorHex", { defaultValue: "Brand color (hex)" })}</label>
                   <input
                     id="cf-brandColor"
                     type="color"
@@ -1634,7 +1838,7 @@ function AdminApp() {
                   />
                 </div>
                 <div className="field-group">
-                  <label htmlFor="cf-headerMessage">Header message</label>
+                  <label htmlFor="cf-headerMessage">{t("headerMessage", { defaultValue: "Header message" })}</label>
                   <input
                     id="cf-headerMessage"
                     value={pageForm.headerMessage}
@@ -1647,7 +1851,7 @@ function AdminApp() {
                   />
                 </div>
                 <div className="field-group">
-                  <label htmlFor="cf-footerMessage">Footer message</label>
+                  <label htmlFor="cf-footerMessage">{t("footerMessage", { defaultValue: "Footer message" })}</label>
                   <input
                     id="cf-footerMessage"
                     value={pageForm.footerMessage}
@@ -1660,9 +1864,9 @@ function AdminApp() {
                   />
                 </div>
                 <fieldset className="form-fieldset">
-                  <legend>Payment Amount Mode</legend>
+                  <legend>{t("paymentAmountMode", { defaultValue: "Payment Amount Mode" })}</legend>
                   <div className="field-group">
-                    <label htmlFor="cf-amountMode">Amount mode</label>
+                    <label htmlFor="cf-amountMode">{t("amountMode", { defaultValue: "Amount mode" })}</label>
                     <select
                       id="cf-amountMode"
                       value={pageForm.amountMode}
@@ -1673,14 +1877,14 @@ function AdminApp() {
                         }))
                       }
                     >
-                      <option value="fixed">Fixed</option>
-                      <option value="range">Range</option>
-                      <option value="user_entered">User entered</option>
+                      <option value="fixed">{t("fixed", { defaultValue: "Fixed" })}</option>
+                      <option value="range">{t("range", { defaultValue: "Range" })}</option>
+                      <option value="user_entered">{t("userEntered", { defaultValue: "User entered" })}</option>
                     </select>
                   </div>
                   {pageForm.amountMode === "fixed" && (
                     <div className="field-group">
-                      <label htmlFor="cf-fixedAmount">Fixed amount</label>
+                      <label htmlFor="cf-fixedAmount">{t("fixedAmount", { defaultValue: "Fixed amount" })}</label>
                       <input
                         id="cf-fixedAmount"
                         type="number"
@@ -1699,7 +1903,7 @@ function AdminApp() {
                   {pageForm.amountMode === "range" && (
                     <>
                       <div className="field-group">
-                        <label htmlFor="cf-minAmount">Minimum amount</label>
+                        <label htmlFor="cf-minAmount">{t("minimumAmount", { defaultValue: "Minimum amount" })}</label>
                         <input
                           id="cf-minAmount"
                           type="number"
@@ -1715,7 +1919,7 @@ function AdminApp() {
                         />
                       </div>
                       <div className="field-group">
-                        <label htmlFor="cf-maxAmount">Maximum amount</label>
+                        <label htmlFor="cf-maxAmount">{t("maximumAmount", { defaultValue: "Maximum amount" })}</label>
                         <input
                           id="cf-maxAmount"
                           type="number"
@@ -1734,13 +1938,34 @@ function AdminApp() {
                   )}
                 </fieldset>
                 <div className="field-group">
-                  <label htmlFor="cf-glCodes">GL codes (comma separated)</label>
+                  <label htmlFor="cf-glCodes">{t("glCodesCommaSeparated", { defaultValue: "GL codes (comma separated)" })}</label>
                   <input
                     id="cf-glCodes"
                     value={pageForm.glCodes}
                     onChange={(e) =>
                       setPageForm((p) => ({ ...p, glCodes: e.target.value }))
                     }
+                    placeholder="Example: GL-100, AR_200, REV.300"
+                  />
+                  <small className="subtle">
+                    Allowed characters: letters, numbers, `_`, `.`, and `-`.
+                  </small>
+                </div>
+                <div className="field-group">
+                  <label htmlFor="cf-emailTemplate">
+                    Confirmation email template
+                  </label>
+                  <textarea
+                    id="cf-emailTemplate"
+                    rows={5}
+                    value={pageForm.emailTemplate}
+                    onChange={(e) =>
+                      setPageForm((p) => ({
+                        ...p,
+                        emailTemplate: e.target.value,
+                      }))
+                    }
+                    placeholder="Use {{payer_name}}, {{amount}}, {{transaction_id}}, {{date}}, {{custom_fields}}"
                   />
                 </div>
                 <div className="field-builder-header">
@@ -1771,11 +1996,11 @@ function AdminApp() {
                         updateBuilderField(idx, "type", e.target.value)
                       }
                     >
-                      <option value="text">Text</option>
-                      <option value="number">Number</option>
-                      <option value="dropdown">Dropdown</option>
-                      <option value="date">Date</option>
-                      <option value="checkbox">Checkbox</option>
+                      <option value="text">{t("text", { defaultValue: "Text" })}</option>
+                      <option value="number">{t("number", { defaultValue: "Number" })}</option>
+                      <option value="dropdown">{t("dropdown", { defaultValue: "Dropdown" })}</option>
+                      <option value="date">{t("date", { defaultValue: "Date" })}</option>
+                      <option value="checkbox">{t("checkbox", { defaultValue: "Checkbox" })}</option>
                     </select>
                     {field.type === "dropdown" && (
                       <input
@@ -1827,14 +2052,28 @@ function AdminApp() {
                   </div>
                 ))}
                 <button type="submit" disabled={loading || !canEditPages}>
-                  {loading ? "Saving..." : "Create page"}
+                  {loading
+                    ? "Saving..."
+                    : editingPageId
+                      ? "Save changes"
+                      : "Create page"}
                 </button>
+                {editingPageId && (
+                  <button
+                    type="button"
+                    disabled={loading}
+                    onClick={resetPageBuilder}
+                  >
+                    {t("cancelEditing", { defaultValue: "Cancel editing" })}
+                  </button>
+                )}
                 <button
                   type="button"
                   disabled={loading || !canEditPages}
                   onClick={async () => {
                     try {
-                      const targetPage = pages[0];
+                      const targetPage =
+                        pages.find((p) => p.id === editingPageId) || pages[0];
                       if (!targetPage) {
                         setError(
                           "Create a page first, then use Save as Draft.",
@@ -1847,62 +2086,112 @@ function AdminApp() {
                           method: "PUT",
                           token,
                           body: {
-                            slug: targetPage.slug,
-                            title: pageForm.title || targetPage.title,
-                            subtitle: pageForm.subtitle,
-                            description: targetPage.description || "",
-                            logoUrl: targetPage.logoUrl || "",
-                            brandColor: pageForm.brandColor,
-                            headerMessage: pageForm.headerMessage,
-                            footerMessage: pageForm.footerMessage,
-                            amountMode: pageForm.amountMode,
-                            fixedAmount: Number(pageForm.fixedAmount),
-                            minAmount: targetPage.minAmount,
-                            maxAmount: targetPage.maxAmount,
-                            glCodes: pageForm.glCodes
-                              .split(",")
-                              .map((code) => code.trim())
-                              .filter(Boolean),
-                            emailTemplate: targetPage.emailTemplate || "",
-                            isActive: true,
-                            customFields: targetPage.customFields || [],
+                            ...preparePagePayload(),
+                            isActive: targetPage.isActive,
                           },
                         },
                       );
-                      await fetchDashboard(token);
+                      await fetchDashboard(token, reportFilters);
                       setView("pages");
                     } catch (err) {
                       setError(err.message);
                     }
                   }}
                 >
-                  Save as Draft (first page)
+                  {t("saveAsDraft", { defaultValue: "Save as Draft" })}
                 </button>
               </form>
             </section>
             <section className="panel preview-panel">
-              <h3>Live payment page preview</h3>
+              <h3>{t("livePaymentPagePreview", { defaultValue: "Live payment page preview" })}</h3>
               <article className="payment-preview">
                 <header style={{ background: pageForm.brandColor }}>
-                  <p>Quick Payment Page</p>
+                  <p>{pageForm.title || "Quick Payment Page"}</p>
                 </header>
                 <div className="preview-body">
-                  <h4>{pageForm.title || "Your page title"}</h4>
-                  <p>{pageForm.subtitle || "Your subtitle appears here."}</p>
-                  <div className="preview-banner">{pageForm.headerMessage}</div>
-                  <label>
-                    Payment amount
-                    <input
-                      readOnly
-                      value={`$${Number(pageForm.fixedAmount || 0).toFixed(2)}`}
-                    />
-                  </label>
-                  <label>
-                    Email
-                    <input readOnly value="payer@example.com" />
-                  </label>
-                  <button type="button">Pay now</button>
-                  <small>{pageForm.footerMessage}</small>
+                  {pageForm.subtitle && <p>{pageForm.subtitle}</p>}
+                  <div className="preview-banner">
+                    {pageForm.headerMessage || "Complete secure payment below."}
+                  </div>
+
+                  <fieldset className="form-fieldset preview-fieldset">
+                    <legend>{t("yourInformation", { defaultValue: "Your Information" })}</legend>
+                    <label>
+                      Full name *
+                      <input readOnly value="" placeholder="Full name" />
+                    </label>
+                    <label>
+                      Email *
+                      <input
+                        readOnly
+                        value=""
+                        placeholder="payer@example.com"
+                      />
+                    </label>
+                  </fieldset>
+
+                  {pageForm.amountMode === "fixed" ? (
+                    <div className="amount-display preview-amount-display">
+                      <span className="amount-label">{t("amount", { defaultValue: "Amount" })}</span>
+                      <span className="amount-value">
+                        ${Number(pageForm.fixedAmount || 0).toFixed(2)}
+                      </span>
+                    </div>
+                  ) : (
+                    <label>
+                      Amount{pageForm.amountMode === "user_entered" ? " *" : ""}
+                      <input
+                        readOnly
+                        value=""
+                        placeholder={
+                          pageForm.amountMode === "range"
+                            ? `$${Number(pageForm.minAmount || 0).toFixed(2)} - $${Number(pageForm.maxAmount || 0).toFixed(2)}`
+                            : "Enter amount"
+                        }
+                      />
+                    </label>
+                  )}
+
+                  {customFieldsBuilder.length > 0 && (
+                    <fieldset className="form-fieldset preview-fieldset">
+                      <legend>{t("additionalDetails", { defaultValue: "Additional Details" })}</legend>
+                      {customFieldsBuilder.map((field) => (
+                        <label key={field.id}>
+                          {field.label || "Custom field"}
+                          {field.required ? " *" : ""}
+                          {field.type === "dropdown" ? (
+                            <select disabled>
+                              <option>{t("selectAnOption", { defaultValue: "Select an option" })}</option>
+                            </select>
+                          ) : (
+                            <input
+                              readOnly
+                              type={field.type === "date" ? "text" : "text"}
+                              value=""
+                              placeholder={
+                                field.type === "date" ? "mm/dd/yyyy" : "Value"
+                              }
+                            />
+                          )}
+                        </label>
+                      ))}
+                    </fieldset>
+                  )}
+
+                  <fieldset className="form-fieldset preview-fieldset">
+                    <legend>{t("paymentMethod", { defaultValue: "Payment method" })}</legend>
+                    <div className="preview-method-tabs">
+                      <button type="button" className="active">
+                        {t("cardAndDigitalWallet", { defaultValue: "Card & Digital Wallet" })}
+                      </button>
+                      <button type="button">{t("bankTransferAch", { defaultValue: "Bank Transfer (ACH)" })}</button>
+                    </div>
+                  </fieldset>
+
+                  <button type="button">{t("continueToPayment", { defaultValue: "Continue to Payment" })}</button>
+                  {pageForm.footerMessage && (
+                    <small>{pageForm.footerMessage}</small>
+                  )}
                 </div>
               </article>
             </section>
@@ -1919,16 +2208,126 @@ function AdminApp() {
             />
           ) : (
             <section className="panel">
-              <h3>Recent transactions</h3>
+              <h3>{t("transactionsAndReporting", { defaultValue: "Transactions and reporting" })}</h3>
+              <form
+                className="form-grid"
+                onSubmit={applyReportFilters}
+                aria-label="Report filters"
+              >
+                <div className="field-group">
+                  <label htmlFor="rf-from">{t("fromDate", { defaultValue: "From date" })}</label>
+                  <input
+                    id="rf-from"
+                    type="date"
+                    value={reportFilters.from}
+                    onChange={(e) =>
+                      setReportFilters((prev) => ({
+                        ...prev,
+                        from: e.target.value,
+                      }))
+                    }
+                  />
+                </div>
+                <div className="field-group">
+                  <label htmlFor="rf-to">{t("toDate", { defaultValue: "To date" })}</label>
+                  <input
+                    id="rf-to"
+                    type="date"
+                    value={reportFilters.to}
+                    onChange={(e) =>
+                      setReportFilters((prev) => ({
+                        ...prev,
+                        to: e.target.value,
+                      }))
+                    }
+                  />
+                </div>
+                <div className="field-group">
+                  <label htmlFor="rf-page">{t("paymentPage", { defaultValue: "Payment page" })}</label>
+                  <select
+                    id="rf-page"
+                    value={reportFilters.pageId}
+                    onChange={(e) =>
+                      setReportFilters((prev) => ({
+                        ...prev,
+                        pageId: e.target.value,
+                      }))
+                    }
+                  >
+                    <option value="">{t("allPages", { defaultValue: "All pages" })}</option>
+                    {pages.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.title}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="field-group">
+                  <label htmlFor="rf-status">{t("status", { defaultValue: "Status" })}</label>
+                  <select
+                    id="rf-status"
+                    value={reportFilters.status}
+                    onChange={(e) =>
+                      setReportFilters((prev) => ({
+                        ...prev,
+                        status: e.target.value,
+                      }))
+                    }
+                  >
+                    <option value="">{t("allStatuses", { defaultValue: "All statuses" })}</option>
+                    <option value="success">{t("statusValue_success", { defaultValue: "Success" })}</option>
+                    <option value="failed">{t("statusValue_failed", { defaultValue: "Failed" })}</option>
+                    <option value="pending">{t("statusValue_pending", { defaultValue: "Pending" })}</option>
+                  </select>
+                </div>
+                <div className="field-group">
+                  <label htmlFor="rf-method">{t("paymentMethod", { defaultValue: "Payment method" })}</label>
+                  <select
+                    id="rf-method"
+                    value={reportFilters.paymentMethod}
+                    onChange={(e) =>
+                      setReportFilters((prev) => ({
+                        ...prev,
+                        paymentMethod: e.target.value,
+                      }))
+                    }
+                  >
+                    <option value="">{t("allMethods", { defaultValue: "All methods" })}</option>
+                    <option value="card">{t("paymentMethod_card", { defaultValue: "Card" })}</option>
+                    <option value="wallet">{t("paymentMethod_wallet", { defaultValue: "Wallet" })}</option>
+                    <option value="ach">{t("paymentMethod_ach", { defaultValue: "ACH" })}</option>
+                  </select>
+                </div>
+                <button type="submit">{t("applyFilters", { defaultValue: "Apply filters" })}</button>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    const cleared = {
+                      from: "",
+                      to: "",
+                      pageId: "",
+                      status: "",
+                      paymentMethod: "",
+                    };
+                    setReportFilters(cleared);
+                    await fetchDashboard(token, cleared);
+                  }}
+                >
+                  {t("clearFilters", { defaultValue: "Clear filters" })}
+                </button>
+                <button type="button" onClick={exportTransactionsCsv}>
+                  {t("exportCsv", { defaultValue: "Export CSV" })}
+                </button>
+              </form>
               <div className="table-wrap">
                 <table aria-label="Recent transactions">
                   <thead>
                     <tr>
-                      <th scope="col">Amount</th>
-                      <th scope="col">Status</th>
-                      <th scope="col">Method</th>
-                      <th scope="col">Payer</th>
-                      <th scope="col">Created</th>
+                      <th scope="col">{t("amount", { defaultValue: "Amount" })}</th>
+                      <th scope="col">{t("status", { defaultValue: "Status" })}</th>
+                      <th scope="col">{t("method", { defaultValue: "Method" })}</th>
+                      <th scope="col">{t("payer", { defaultValue: "Payer" })}</th>
+                      <th scope="col">{t("created", { defaultValue: "Created" })}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1975,9 +2374,11 @@ function AnimatedAppRoutes() {
 
 function App() {
   return (
-    <BrowserRouter>
-      <AnimatedAppRoutes />
-    </BrowserRouter>
+    <LanguageProvider>
+      <BrowserRouter>
+        <AnimatedAppRoutes />
+      </BrowserRouter>
+    </LanguageProvider>
   );
 }
 

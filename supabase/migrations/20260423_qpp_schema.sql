@@ -10,6 +10,7 @@ create table if not exists public.admin_users (
 
 create table if not exists public.payment_pages (
   id text primary key,
+  owner_user_id text references public.admin_users(id) on delete set null,
   slug text unique not null,
   title text not null,
   subtitle text,
@@ -90,3 +91,4 @@ create table if not exists public.webhook_events (
 );
 
 create unique index if not exists idx_transactions_stripe_intent_id on public.transactions(stripe_payment_intent_id);
+create index if not exists idx_payment_pages_owner_user_id on public.payment_pages(owner_user_id);

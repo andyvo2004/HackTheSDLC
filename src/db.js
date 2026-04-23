@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 import { supabaseAdmin, supabaseConfigured } from "./lib/supabaseAdmin.js";
 
-async function maybeSeedDemoData() {
+async function maybeSeedDemoData(defaultOwnerUserId = null) {
   const { data: existingPage } = await supabaseAdmin
     .from("payment_pages")
     .select("id")
@@ -16,6 +16,7 @@ async function maybeSeedDemoData() {
   const { error: pagesError } = await supabaseAdmin.from("payment_pages").insert([
     {
       id: yogaPageId,
+      owner_user_id: defaultOwnerUserId,
       slug: "yoga-class",
       title: "Yoga Class Payment",
       subtitle: "Secure class fee checkout",
@@ -35,6 +36,7 @@ async function maybeSeedDemoData() {
     },
     {
       id: parkingPageId,
+      owner_user_id: defaultOwnerUserId,
       slug: "parking-fee",
       title: "Parking Fee Payment",
       subtitle: "Pay parking balances online",
@@ -70,9 +72,9 @@ async function maybeSeedDemoData() {
   if (fieldError) throw fieldError;
 }
 
-export async function initDb() {
+export async function initDb({ defaultOwnerUserId = null } = {}) {
   if (!supabaseConfigured()) {
     throw new Error("Supabase is not configured. Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY.");
   }
-  await maybeSeedDemoData();
+  await maybeSeedDemoData(defaultOwnerUserId);
 }
