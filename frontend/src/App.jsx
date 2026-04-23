@@ -722,13 +722,6 @@ function AuthPage({ mode }) {
     setError("");
     setAuthNotice("");
     try {
-      const { error: supabaseError } = await supabase.auth.signInWithPassword({
-        email: loginForm.email,
-        password: loginForm.password,
-      });
-      if (supabaseError) {
-        throw supabaseError;
-      }
       const data = await apiRequest("/auth/login", {
         method: "POST",
         body: loginForm,
@@ -736,7 +729,21 @@ function AuthPage({ mode }) {
       localStorage.setItem("qpp_token", data.token);
       navigate("/dashboard", { replace: true });
     } catch (err) {
-      setError(err.message);
+      try {
+        const { error: supabaseError } = await supabase.auth.signInWithPassword({
+          email: loginForm.email,
+          password: loginForm.password,
+        });
+        if (supabaseError) throw supabaseError;
+        const data = await apiRequest("/auth/login", {
+          method: "POST",
+          body: loginForm,
+        });
+        localStorage.setItem("qpp_token", data.token);
+        navigate("/dashboard", { replace: true });
+      } catch (supabaseErr) {
+        setError(supabaseErr.message || err.message);
+      }
     } finally {
       setLoading(false);
     }
@@ -997,6 +1004,8 @@ function AdminApp() {
 
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", theme);
+    document.body.classList.remove("light-mode", "dark-mode");
+    document.body.classList.add(theme === "dark" ? "dark-mode" : "light-mode");
     localStorage.setItem("qpp_theme", theme);
   }, [theme]);
 
@@ -1276,6 +1285,15 @@ function AdminApp() {
           <span />
           <span />
         </div>
+        <div className="sidebar-controls">
+          <button
+            className="theme-btn"
+            onClick={() => setTheme((prev) => (prev === "light" ? "dark" : "light"))}
+            aria-label={t("toggleDarkMode")}
+          >
+            {theme === "light" ? t("darkMode") : t("lightMode")}
+          </button>
+        </div>
         <nav aria-label={t("navigationLabel")}>
           {["overview", "insights", "pages", "create", "transactions"].map((item) => (
             <button
@@ -1291,27 +1309,22 @@ function AdminApp() {
         <button className="logout-btn" onClick={handleLogout} aria-label={t("logOut")}>
           {t("logOut")}
         </button>
-        <button
-          className="theme-btn"
-          onClick={() => setTheme((prev) => (prev === "light" ? "dark" : "light"))}
-          aria-label={t("toggleDarkMode")}
-        >
-          {theme === "light" ? t("darkMode") : t("lightMode")}
-        </button>
-        <div className="lang-switcher lang-switcher--sidebar">
-          <label htmlFor="lang-select-sidebar">{t("language")}</label>
-          <select id="lang-select-sidebar" value={lang} onChange={(e) => setLang(e.target.value)}>
-            {LANGUAGE_OPTIONS.map((option) => (
-              <option key={option.code} value={option.code}>{option.label}</option>
-            ))}
-          </select>
-        </div>
       </aside>
 
       <main className="content-shell">
-        <header>
-          <p className="eyebrow">{t("healthcarePaymentsControlCenter")}</p>
-          <h1>{t("dashboardTitle")}</h1>
+        <header className="content-header">
+          <div>
+            <p className="eyebrow">{t("healthcarePaymentsControlCenter")}</p>
+            <h1>{t("dashboardTitle")}</h1>
+          </div>
+          <div className="lang-switcher lang-switcher--header">
+            <label htmlFor="lang-select-header">{t("language")}</label>
+            <select id="lang-select-header" value={lang} onChange={(e) => setLang(e.target.value)}>
+              {LANGUAGE_OPTIONS.map((option) => (
+                <option key={option.code} value={option.code}>{option.label}</option>
+              ))}
+            </select>
+          </div>
         </header>
         {error && <div role="alert" aria-live="assertive" className="error">{error}</div>}
         {toast && (

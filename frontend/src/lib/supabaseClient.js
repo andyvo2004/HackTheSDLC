@@ -8,4 +8,19 @@ if (!supabaseUrl || !supabaseAnonKey) {
   console.warn("Supabase env vars are missing: VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY");
 }
 
-export const supabase = createClient(supabaseUrl || "", supabaseAnonKey || "");
+const fallbackError = new Error(
+  "Supabase is not configured. Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY.",
+);
+
+const fallbackSupabaseClient = {
+  auth: {
+    getSession: async () => ({ data: { session: null }, error: null }),
+    signInWithPassword: async () => ({ data: null, error: fallbackError }),
+    signInWithOAuth: async () => ({ data: null, error: fallbackError }),
+  },
+};
+
+export const supabase =
+  supabaseUrl && supabaseAnonKey
+    ? createClient(supabaseUrl, supabaseAnonKey)
+    : fallbackSupabaseClient;
