@@ -20,6 +20,22 @@ Backend API for the Quick Payment Pages hackathon challenge.
 
 Server runs at `http://localhost:4000` by default.
 
+## Frontend (React + Vite)
+
+1. Install frontend dependencies:
+   - `cd frontend`
+   - `../dev-env.sh npm install`
+2. Start frontend:
+   - `cp .env.example .env`
+   - `../dev-env.sh npm run dev`
+3. Optional API URL override:
+   - `VITE_API_URL=http://localhost:4000`
+   - `VITE_STRIPE_PUBLISHABLE_KEY=pk_test_...`
+
+Frontend routes:
+- `/` admin dashboard
+- `/pay/:slug` public payment checkout (Stripe Elements)
+
 ## Local JS "venv" style setup
 
 This repo includes `dev-env.sh` so you can run Node/npm locally without relying on system npm/Homebrew permissions.
