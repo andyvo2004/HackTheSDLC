@@ -32,6 +32,24 @@ export async function initDb() {
       email TEXT UNIQUE NOT NULL,
       password_hash TEXT NOT NULL,
       role TEXT NOT NULL DEFAULT 'owner',
+      company_name TEXT,
+      company_logo_url TEXT,
+      created_at TEXT NOT NULL
+    )
+  `);
+
+  await db.run(`
+    CREATE TABLE IF NOT EXISTS company_account_requests (
+      id TEXT PRIMARY KEY,
+      company_name TEXT NOT NULL,
+      company_logo_url TEXT NOT NULL,
+      email TEXT UNIQUE NOT NULL,
+      password_hash TEXT NOT NULL DEFAULT '',
+      plain_password TEXT NOT NULL DEFAULT '',
+      auth_method TEXT NOT NULL DEFAULT 'password',
+      status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'rejected')),
+      reviewed_at TEXT,
+      reviewed_by TEXT,
       created_at TEXT NOT NULL
     )
   `);
@@ -138,10 +156,27 @@ export async function initDb() {
 
   const adminColumns = await db.all("PRAGMA table_info(admin_users)");
   const hasRoleColumn = adminColumns.some((c) => c.name === "role");
+  const hasCompanyNameColumn = adminColumns.some((c) => c.name === "company_name");
+  const hasCompanyLogoColumn = adminColumns.some((c) => c.name === "company_logo_url");
   if (!hasRoleColumn) {
     await db.run("ALTER TABLE admin_users ADD COLUMN role TEXT NOT NULL DEFAULT 'owner'");
   }
+  if (!hasCompanyNameColumn) {
+    await db.run("ALTER TABLE admin_users ADD COLUMN company_name TEXT");
+  }
+  if (!hasCompanyLogoColumn) {
+    await db.run("ALTER TABLE admin_users ADD COLUMN company_logo_url TEXT");
+  }
   await db.run("UPDATE admin_users SET role = 'owner' WHERE role IS NULL OR role = ''");
+
+  const requestColumns = await db.all("PRAGMA table_info(company_account_requests)");
+  const requestColumnNames = new Set(requestColumns.map((c) => c.name));
+  if (!requestColumnNames.has("password_hash")) {
+    await db.run("ALTER TABLE company_account_requests ADD COLUMN password_hash TEXT NOT NULL DEFAULT ''");
+  }
+  if (!requestColumnNames.has("plain_password")) {
+    await db.run("ALTER TABLE company_account_requests ADD COLUMN plain_password TEXT NOT NULL DEFAULT ''");
+  }
 
   const pageColumns = await db.all("PRAGMA table_info(payment_pages)");
   const pageColumnNames = new Set(pageColumns.map((c) => c.name));
