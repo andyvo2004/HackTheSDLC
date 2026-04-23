@@ -907,6 +907,10 @@ function AdminApp() {
   const [view, setView] = useState("overview");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [theme, setTheme] = useState(() => {
+    const saved = localStorage.getItem("qpp_theme");
+    return saved === "light" || saved === "dark" ? saved : "dark";
+  });
 
   const [pageForm, setPageForm] = useState({
     slug: "",
@@ -993,6 +997,15 @@ function AdminApp() {
   useEffect(() => {
     if (token) fetchDashboard(token);
   }, [token]);
+
+  useEffect(() => {
+    document.body.classList.remove("light-mode", "dark-mode");
+    document.body.classList.add(theme === "light" ? "light-mode" : "dark-mode");
+    localStorage.setItem("qpp_theme", theme);
+    return () => {
+      document.body.classList.remove("light-mode", "dark-mode");
+    };
+  }, [theme]);
 
   const handleCreatePage = async (e) => {
     e.preventDefault();
@@ -1146,43 +1159,89 @@ function AdminApp() {
 
   if (!token) return <Navigate to="/login" replace />;
 
+  const isOwner = user?.role === "owner";
+  const ownerCompanyName = isOwner ? user?.companyName?.trim() : "";
+  const ownerCompanyLogo = isOwner ? user?.companyLogoUrl?.trim() : "";
+  const accountDisplayName = ownerCompanyName || "Waystar QPP";
+  const accountSubtitle = isOwner
+    ? "Owner workspace"
+    : `${(user?.role || "viewer").charAt(0).toUpperCase()}${(user?.role || "viewer").slice(1)} workspace`;
+
   return (
     <div className="app-shell">
       <aside className="sidebar">
-        <h2>Waystar QPP</h2>
-        <p className="role-pill">{user?.role || "viewer"}</p>
-        <div className="brand-mark" aria-hidden="true">
-          <span />
-          <span />
-          <span />
+        <div className="sidebar-main">
+          <div className="sidebar-brand">
+            <img src={qppPlainLogo} alt="QPP" className="sidebar-qpp-logo" />
+            <div>
+              <h2>Quick Payment Pages</h2>
+              <p className="sidebar-brand-subtext">Control Center</p>
+            </div>
+          </div>
+          <div className="workspace-profile">
+            <div className="workspace-logo-wrap" aria-hidden={ownerCompanyLogo ? undefined : "true"}>
+              {ownerCompanyLogo ? (
+                <img
+                  src={ownerCompanyLogo}
+                  alt={`${accountDisplayName} logo`}
+                  className="workspace-logo"
+                  onError={(e) => {
+                    e.currentTarget.style.display = "none";
+                  }}
+                />
+              ) : (
+                <span>{accountDisplayName.charAt(0).toUpperCase()}</span>
+              )}
+            </div>
+            <div className="workspace-meta">
+              <p className="workspace-name">{accountDisplayName}</p>
+              <p className="workspace-subtitle">{accountSubtitle}</p>
+            </div>
+          </div>
+          <div className="role-pill-wrap">
+            <p className="role-pill">{user?.role || "viewer"}</p>
+          </div>
+          <nav aria-label="Admin navigation">
+            {["overview", "insights", "pages", "create", "transactions"].map(
+              (item) => (
+                <button
+                  key={item}
+                  className={view === item ? "nav-btn active" : "nav-btn"}
+                  onClick={() => setView(item)}
+                  aria-current={view === item ? "page" : undefined}
+                >
+                  {item[0].toUpperCase() + item.slice(1)}
+                </button>
+              ),
+            )}
+          </nav>
         </div>
-        <nav aria-label="Admin navigation">
-          {["overview", "insights", "pages", "create", "transactions"].map(
-            (item) => (
-              <button
-                key={item}
-                className={view === item ? "nav-btn active" : "nav-btn"}
-                onClick={() => setView(item)}
-                aria-current={view === item ? "page" : undefined}
-              >
-                {item[0].toUpperCase() + item.slice(1)}
-              </button>
-            ),
-          )}
-        </nav>
-        <button
-          className="logout-btn"
-          onClick={handleLogout}
-          aria-label="Sign out"
-        >
-          Log out
-        </button>
+        <div className="sidebar-footer">
+          <button
+            className="theme-btn"
+            type="button"
+            onClick={() => setTheme((prev) => (prev === "dark" ? "light" : "dark"))}
+            aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} mode`}
+          >
+            {theme === "dark" ? "Light mode" : "Dark mode"}
+          </button>
+          <button
+            className="logout-btn"
+            onClick={handleLogout}
+            aria-label="Sign out"
+          >
+            Log out
+          </button>
+        </div>
       </aside>
 
       <main className="content-shell">
-        <header>
+        <header className="dashboard-header">
           <p className="eyebrow">Healthcare Payments Control Center</p>
-          <h1>Design-forward operations dashboard</h1>
+          <h1>{accountDisplayName}</h1>
+          <p className="subtle">
+            Unified overview for payment pages, transactions, and distribution.
+          </p>
         </header>
         {error && (
           <div role="alert" aria-live="assertive" className="error">

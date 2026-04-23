@@ -287,7 +287,7 @@ authRouter.get("/me", requireAuth, async (req, res, next) => {
   try {
     const { data: user, error } = await supabaseAdmin
       .from("admin_users")
-      .select("id,email,role,created_at")
+      .select("id,email,role,company_name,company_logo_url,created_at")
       .eq("id", req.user.sub)
       .maybeSingle();
     if (error) throw error;
@@ -296,6 +296,8 @@ authRouter.get("/me", requireAuth, async (req, res, next) => {
       id: user.id,
       email: user.email,
       role: user.role || "viewer",
+      companyName: user.company_name || null,
+      companyLogoUrl: user.company_logo_url || null,
       createdAt: user.created_at,
     });
   } catch (err) {
