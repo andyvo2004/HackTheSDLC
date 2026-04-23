@@ -22,7 +22,13 @@ function mapField(field) {
 }
 
 function resolveAmount(page, inputAmount) {
-  if (page.amount_mode === "fixed") return Number(page.fixed_amount || 0);
+  if (page.amount_mode === "fixed") {
+    const fixed = Number(page.fixed_amount);
+    if (Number.isFinite(fixed) && fixed > 0) return fixed;
+    const fallbackAmount = Number(inputAmount);
+    if (Number.isNaN(fallbackAmount) || fallbackAmount <= 0) return null;
+    return fallbackAmount;
+  }
   const amount = Number(inputAmount);
   if (Number.isNaN(amount)) return null;
   if (page.amount_mode === "range") {
