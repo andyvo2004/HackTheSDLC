@@ -17,6 +17,13 @@ function dollarsToCents(amount) {
   return Math.round(Number(amount || 0) * 100);
 }
 
+/** Match server-side parsing for typed currency (commas, whitespace). */
+function parseDollarInput(raw) {
+  if (raw === "" || raw == null) return NaN;
+  const n = parseFloat(String(raw).trim().replace(/,/g, "."));
+  return Number.isFinite(n) ? n : NaN;
+}
+
 async function apiRequest(path, { method = "GET", token, body } = {}) {
   const response = await fetch(`${API_BASE}${path}`, {
     method,
@@ -177,21 +184,24 @@ function PublicCheckoutForm({ slug, config, onResult }) {
     if (!payerName.trim()) errors.payerName = t("fieldRequired", { field: t("fullName") });
     if (!payerEmail.trim()) errors.payerEmail = t("fieldRequired", { field: t("email") });
     if (config.amountMode === "fixed" && !hasValidFixedAmount) {
-      const amt = Number(amount);
-      if (!amount || Number.isNaN(amt) || amt <= 0) {
+      const amt = parseDollarInput(amount);
+      if (amount === "" || amount == null || Number.isNaN(amt) || amt <= 0) {
         errors.amount = t("validAmountRequired");
       }
     }
     if (config.amountMode === "range") {
-      const amt = Number(amount);
-      if (!amount || amt < Number(config.minAmount || 0)) {
+      const amt = parseDollarInput(amount);
+      if (amount === "" || amount == null || Number.isNaN(amt) || amt < Number(config.minAmount || 0)) {
         errors.amount = t("amountMin", { min: Number(config.minAmount || 0).toFixed(2) });
       } else if (config.maxAmount && amt > Number(config.maxAmount)) {
         errors.amount = t("amountMax", { max: Number(config.maxAmount || 0).toFixed(2) });
       }
     }
-    if (config.amountMode === "user_entered" && (!amount || Number(amount) <= 0)) {
-      errors.amount = t("validAmountRequired");
+    if (config.amountMode === "user_entered") {
+      const amt = parseDollarInput(amount);
+      if (amount === "" || amount == null || Number.isNaN(amt) || amt <= 0) {
+        errors.amount = t("validAmountRequired");
+      }
     }
     config.customFields?.forEach((field) => {
       if (field.required && !customResponses[field.id]) {
@@ -215,10 +225,13 @@ function PublicCheckoutForm({ slug, config, onResult }) {
     setSubmitting(true);
     setStripeError("");
     try {
+      const amountToCharge = hasValidFixedAmount
+        ? Number(config.fixedAmount)
+        : parseDollarInput(amount);
       const payload = await apiRequest(`/public/pay/${slug}/create-payment-intent`, {
         method: "POST",
         body: {
-          amount: Number(amount),
+          amount: amountToCharge,
           payerEmail,
           payerName,
           paymentMethod,
@@ -305,7 +318,7 @@ function PublicCheckoutForm({ slug, config, onResult }) {
 
     const totalAmount = hasValidFixedAmount
       ? Number(config.fixedAmount || 0)
-      : Number(amount || 0);
+      : parseDollarInput(amount);
     if (!Number.isFinite(totalAmount) || totalAmount <= 0) {
       setWalletRequest(null);
       setWalletAvailable(false);
@@ -556,20 +569,38 @@ function PublicCheckoutForm({ slug, config, onResult }) {
 
       <fieldset className="form-fieldset">
         <legend>{t("paymentDetails")}</legend>
-        <div className="field-group">
-          <label htmlFor="field-payment-method">{t("paymentMethod")}</label>
-          <select
-            id="field-payment-method"
-            value={paymentMethod}
-            onChange={(e) => {
-              const nextMethod = e.target.value;
-              setPaymentMethod(nextMethod);
-              if (nextMethod !== "ach") setAchAuthorizationAccepted(false);
-            }}
+        <div className="field-group payment-method-group">
+          <p id="payment-method-label" className="payment-method-legend">
+            {t("paymentMethod")}
+          </p>
+          <div
+            className="payment-method-buttons"
+            role="group"
+            aria-labelledby="payment-method-label"
           >
-            <option value="card">{t("paymentMethod_card")}</option>
-            <option value="ach">{t("paymentMethod_ach")}</option>
-          </select>
+            <button
+              type="button"
+              className="payment-method-btn"
+              aria-pressed={paymentMethod === "card"}
+              onClick={() => {
+                setPaymentMethod("card");
+                setAchAuthorizationAccepted(false);
+              }}
+            >
+              {t("paymentMethod_card")}
+            </button>
+            <button
+              type="button"
+              className="payment-method-btn"
+              aria-pressed={paymentMethod === "ach"}
+              onClick={() => {
+                setPaymentMethod("ach");
+                setAchAuthorizationAccepted(false);
+              }}
+            >
+              {t("paymentMethod_ach")}
+            </button>
+          </div>
         </div>
         {paymentMethod === "ach" ? (
           <div className="checkbox-group">

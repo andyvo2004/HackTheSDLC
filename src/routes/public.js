@@ -21,21 +21,36 @@ function mapField(field) {
   };
 }
 
+function toPositiveAmount(n) {
+  if (n == null || !Number.isFinite(n) || n <= 0) return null;
+  return n;
+}
+
+/** Accept number or string from JSON; undefined if missing/empty. */
+function normalizeClientAmount(value) {
+  if (value === null || value === undefined) return { ok: true, amount: undefined };
+  if (typeof value === "string" && value.trim() === "") return { ok: true, amount: undefined };
+  if (typeof value === "number" && Number.isFinite(value)) return { ok: true, amount: value };
+  const n = parseFloat(String(value).trim().replace(/,/g, "."));
+  if (Number.isFinite(n)) return { ok: true, amount: n };
+  return { ok: false, error: "Invalid amount" };
+}
+
 function resolveAmount(page, inputAmount) {
   if (page.amount_mode === "fixed") {
     const fixed = Number(page.fixed_amount);
     if (Number.isFinite(fixed) && fixed > 0) return fixed;
-    const fallbackAmount = Number(inputAmount);
-    if (Number.isNaN(fallbackAmount) || fallbackAmount <= 0) return null;
-    return fallbackAmount;
+    return toPositiveAmount(Number(inputAmount));
   }
   const amount = Number(inputAmount);
   if (Number.isNaN(amount)) return null;
   if (page.amount_mode === "range") {
-    if (page.min_amount != null && amount < page.min_amount) return null;
-    if (page.max_amount != null && amount > page.max_amount) return null;
+    const min = page.min_amount == null ? null : Number(page.min_amount);
+    const max = page.max_amount == null ? null : Number(page.max_amount);
+    if (min != null && Number.isFinite(min) && amount < min) return null;
+    if (max != null && Number.isFinite(max) && amount > max) return null;
   }
-  return amount;
+  return toPositiveAmount(amount);
 }
 
 publicRouter.get("/pay/:slug", async (req, res, next) => {
@@ -109,7 +124,12 @@ publicRouter.post("/pay/:slug/create-payment-intent", async (req, res, next) => 
     if (!stripeEnabled()) {
       return res.status(503).json({ error: "Stripe is not configured" });
     }
-    const parsed = submitSchema.safeParse(req.body);
+    const normalized = normalizeClientAmount(req.body?.amount);
+    if (!normalized.ok) {
+      return res.status(400).json({ error: normalized.error });
+    }
+    const bodyForZod = { ...req.body, amount: normalized.amount };
+    const parsed = submitSchema.safeParse(bodyForZod);
     if (!parsed.success) {
       return res.status(400).json({ error: "Validation failed", details: parsed.error.flatten() });
     }
@@ -128,7 +148,23 @@ publicRouter.post("/pay/:slug/create-payment-intent", async (req, res, next) => 
       .eq("page_id", page.id);
     if (fieldsError) throw fieldsError;
     const amount = resolveAmount(page, parsed.data.amount);
-    if (amount == null || amount <= 0) {
+    if (amount == null) {
+      if (page.amount_mode === "range") {
+        const min = page.min_amount == null ? null : Number(page.min_amount);
+        const max = page.max_amount == null ? null : Number(page.max_amount);
+        if (
+          parsed.data.amount != null &&
+          Number.isFinite(parsed.data.amount) &&
+          ((min != null && Number.isFinite(min) && parsed.data.amount < min) ||
+            (max != null && Number.isFinite(max) && parsed.data.amount > max))
+        ) {
+          return res.status(400).json({
+            error: "Invalid amount for this payment page",
+            minAmount: min != null && Number.isFinite(min) ? min : undefined,
+            maxAmount: max != null && Number.isFinite(max) ? max : undefined,
+          });
+        }
+      }
       return res.status(400).json({ error: "Invalid amount for this payment page" });
     }
     if (parsed.data.paymentMethod === "ach" && !parsed.data.achAuthorizationAccepted) {
