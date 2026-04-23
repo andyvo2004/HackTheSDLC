@@ -25,3 +25,6 @@ dist-ssr
 *.sw?
 .env
 env
+playwright-report
+test-results
+lighthouse-report

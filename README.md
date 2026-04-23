@@ -31,7 +31,7 @@ Quick Payment Pages is a hosted, self-service payment platform that lets provide
 |-----------|-----------------------------------------|
 | Frontend  | React 18 + Vite, vanilla CSS            |
 | Backend   | Node.js + Express                       |
-| Database  | SQLite (via better-sqlite3)             |
+| Database  | SQLite (via sqlite3)                    |
 | Payments  | Stripe (sandbox/test mode only)         |
 | Email     | Nodemailer / SMTP (stub mode in dev)    |
 | Auth      | JWT (jsonwebtoken)                      |
@@ -119,13 +119,15 @@ Use any future expiry date, any 3-digit CVV, any billing zip.
 
 Full API documentation is available in the codebase. Key endpoint groups:
 
-- `POST /api/auth/login` — Admin login
-- `GET/POST/PATCH/DELETE /api/pages` — Payment page management
+- `POST /auth/login` — Admin login
+- `GET /auth/me` — Authenticated user profile
+- `GET/POST /admin/pages` — Payment page management
+- `PATCH /admin/pages/:id/status` — Enable/disable page
 - `GET /public/pay/:slug` — Public page config (no auth)
-- `POST /public/pay/:slug/intent` — Create Stripe PaymentIntent
+- `POST /public/pay/:slug/create-payment-intent` — Create Stripe PaymentIntent
 - `POST /public/pay/:slug/confirm` — Confirm payment
-- `GET /api/reports/transactions` — Transaction list with filters
-- `GET /api/reports/export` — CSV export
+- `GET /admin/reports/transactions` — Transaction list with filters
+- `GET /admin/reports/transactions.csv` — CSV export
 - `GET /api/feed` — SSE live activity feed (auth required)
 
 ## Stripe Webhooks (Local Dev)
@@ -135,6 +137,52 @@ Full API documentation is available in the codebase. Key endpoint groups:
 stripe listen --forward-to localhost:3001/webhooks/stripe
 ```
 
+## Mobile App Wrapper (React Native)
+
+A mobile wrapper is included at `mobile/` (Expo + React Native WebView) to run QPP on iOS/Android quickly.
+
+```bash
+cd mobile
+npm install
+cp .env.example .env
+# Set EXPO_PUBLIC_WEB_URL to your frontend URL (or LAN IP URL for physical devices)
+npm run start
+```
+
 ## Product Differentiator: Live Activity Feed
 
 The admin dashboard features a real-time payment activity feed powered by Server-Sent Events (SSE). Every successful payment broadcasts instantly to all connected admin sessions, giving providers immediate awareness without polling or refreshing. This creates a noticeably more professional admin experience than static dashboards.
+
+## Lighthouse Accessibility Audit
+
+Use the built-in Lighthouse script to validate key quality thresholds on the public payment page.
+
+```bash
+# Terminal 1 (backend)
+./dev-env.sh npm run dev
+
+# Terminal 2 (frontend)
+cd frontend
+../dev-env.sh npm run dev -- --host 127.0.0.1 --port 5173
+
+# Terminal 3 (audit)
+cd frontend
+../dev-env.sh npm run test:lighthouse
+```
+
+Optional environment variables for the audit command:
+- `LIGHTHOUSE_URL` (default `http://127.0.0.1:5173/pay/yoga-class`)
+- `LIGHTHOUSE_MIN_ACCESSIBILITY` (default `0.9`)
+- `LIGHTHOUSE_MIN_PERFORMANCE` (default `0.7`)
+- `LIGHTHOUSE_MIN_BEST_PRACTICES` (default `0.85`)
+- `LIGHTHOUSE_MIN_SEO` (default `0.8`)
+
+## Stretch Goals Implemented
+
+- ACH bank transfer checkout with authorization language and Stripe Financial Connections
+- Dynamic wallet availability detection via Payment Request API (Apple Pay / Google Pay where supported)
+- Multi-language localization (10 languages)
+- Webhook hardening with idempotency and refund/dispute handling
+- Dark mode with persisted preference and OS preference detection fallback
+- Playwright end-to-end smoke tests
+- Mobile wrapper app (Expo + React Native WebView)

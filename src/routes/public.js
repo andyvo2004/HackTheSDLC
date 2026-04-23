@@ -124,18 +124,32 @@ publicRouter.post("/pay/:slug/create-payment-intent", async (req, res, next) => 
     const txnId = uuidv4();
     const now = new Date().toISOString();
     const stripe = getStripeClient();
-    const intent = await stripe.paymentIntents.create({
+    const requestedMethod = parsed.data.paymentMethod === "ach" ? "us_bank_account" : "card";
+
+    const intentParams = {
       amount: dollarsToCents(amount),
       currency: "usd",
+      payment_method_types: [requestedMethod],
       receipt_email: parsed.data.payerEmail,
       description: `QPP payment for ${page.title}`,
       metadata: {
         transaction_id: txnId,
         page_id: page.id,
         page_slug: page.slug,
+        payment_type: parsed.data.paymentMethod,
       },
-      automatic_payment_methods: { enabled: true },
-    });
+    };
+
+    if (requestedMethod === "us_bank_account") {
+      intentParams.payment_method_options = {
+        us_bank_account: {
+          financial_connections: { permissions: ["payment_method"] },
+          verification_method: "automatic",
+        },
+      };
+    }
+
+    const intent = await stripe.paymentIntents.create(intentParams);
 
     await db.run(
       `INSERT INTO transactions
