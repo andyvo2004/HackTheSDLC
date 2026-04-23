@@ -221,4 +221,109 @@ export async function initDb() {
       ]);
     }
   }
+
+  const pageCount = await db.get("SELECT COUNT(*) AS count FROM payment_pages");
+  if (Number(pageCount.count || 0) === 0) {
+    const now = new Date().toISOString();
+    const yogaPageId = crypto.randomUUID();
+    const parkingPageId = crypto.randomUUID();
+    const demoPages = [
+      {
+        id: yogaPageId,
+        slug: "yoga-class",
+        title: "Yoga Class Payment",
+        subtitle: "Secure class fee checkout",
+        description: "Use this page to pay for your upcoming yoga class.",
+        logoUrl: "",
+        brandColor: "#0f63ff",
+        headerMessage: "Thank you for choosing our organization",
+        footerMessage: "Need help? Reach our billing support team.",
+        amountMode: "fixed",
+        fixedAmount: 25,
+        minAmount: null,
+        maxAmount: null,
+        glCodes: ["GL-100"],
+      },
+      {
+        id: parkingPageId,
+        slug: "parking-fee",
+        title: "Parking Fee Payment",
+        subtitle: "Pay parking balances online",
+        description: "Enter your amount and complete payment for parking services.",
+        logoUrl: "",
+        brandColor: "#1f7a5a",
+        headerMessage: "Complete your secure payment below.",
+        footerMessage: "Questions? Contact parking support.",
+        amountMode: "range",
+        fixedAmount: null,
+        minAmount: 10,
+        maxAmount: 500,
+        glCodes: ["GL-200"],
+      },
+    ];
+
+    for (const page of demoPages) {
+      await db.run(
+        `INSERT INTO payment_pages
+        (id, slug, title, subtitle, description, logo_url, brand_color, header_message, footer_message, amount_mode, fixed_amount, min_amount, max_amount, gl_codes_json, email_template, draft_config_json, current_version, last_published_at, is_active, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          page.id,
+          page.slug,
+          page.title,
+          page.subtitle,
+          page.description,
+          page.logoUrl,
+          page.brandColor,
+          page.headerMessage,
+          page.footerMessage,
+          page.amountMode,
+          page.fixedAmount,
+          page.minAmount,
+          page.maxAmount,
+          JSON.stringify(page.glCodes),
+          null,
+          null,
+          1,
+          now,
+          1,
+          now,
+          now,
+        ],
+      );
+    }
+
+    await db.run(
+      `INSERT INTO custom_fields
+      (id, page_id, label, type, options_json, required, placeholder, helper_text, display_order)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [crypto.randomUUID(), parkingPageId, "License Plate", "text", "[]", 1, "ABC-1234", "Enter your vehicle plate number", 0],
+    );
+  }
+
+  const txCount = await db.get("SELECT COUNT(*) AS count FROM transactions");
+  if (Number(txCount.count || 0) === 0) {
+    const firstPage = await db.get("SELECT id, gl_codes_json FROM payment_pages ORDER BY created_at ASC LIMIT 1");
+    if (firstPage) {
+      const now = new Date().toISOString();
+      await db.run(
+        `INSERT INTO transactions
+        (id, page_id, amount, payment_method, status, payer_name, payer_email, processor_ref, stripe_payment_intent_id, gl_codes_json, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          crypto.randomUUID(),
+          firstPage.id,
+          25,
+          "card",
+          "success",
+          "Demo Payer",
+          "demo@example.com",
+          "demo_txn_seed",
+          "pi_demo_seed",
+          firstPage.gl_codes_json || "[]",
+          now,
+        ],
+      );
+    }
+  }
 }

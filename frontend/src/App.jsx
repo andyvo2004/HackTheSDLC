@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { BrowserRouter, Navigate, Route, Routes, useParams } from "react-router-dom";
-import { CardElement, Elements, useElements, useStripe } from "@stripe/react-stripe-js";
+import { CardElement, Elements, PaymentRequestButtonElement, useElements, useStripe } from "@stripe/react-stripe-js";
 import { loadStripe } from "@stripe/stripe-js";
 import { DistributionPanel } from "./components/DistributionPanel.jsx";
 import { getContrastColor } from "./utils/color.js";
@@ -11,6 +11,10 @@ import { localizeSeededText } from "./utils/localizeSeededText.js";
 const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:4000";
 const STRIPE_KEY = import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY || "";
 const stripePromise = STRIPE_KEY ? loadStripe(STRIPE_KEY) : null;
+
+function dollarsToCents(amount) {
+  return Math.round(Number(amount || 0) * 100);
+}
 
 async function apiRequest(path, { method = "GET", token, body } = {}) {
   const response = await fetch(`${API_BASE}${path}`, {
@@ -155,6 +159,8 @@ function PublicCheckoutForm({ slug, config, onResult }) {
   const [paymentMethod, setPaymentMethod] = useState("card");
   const [customResponses, setCustomResponses] = useState({});
   const [achAuthorizationAccepted, setAchAuthorizationAccepted] = useState(false);
+  const [walletRequest, setWalletRequest] = useState(null);
+  const [walletAvailable, setWalletAvailable] = useState(false);
   const [fieldErrors, setFieldErrors] = useState({});
   const [stripeError, setStripeError] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -277,6 +283,105 @@ function PublicCheckoutForm({ slug, config, onResult }) {
       setSubmitting(false);
     }
   };
+
+  useEffect(() => {
+    if (!stripe) {
+      setWalletRequest(null);
+      setWalletAvailable(false);
+      return;
+    }
+
+    const totalAmount = Number(amount || config.fixedAmount || 0);
+    if (!Number.isFinite(totalAmount) || totalAmount <= 0) {
+      setWalletRequest(null);
+      setWalletAvailable(false);
+      return;
+    }
+
+    const paymentRequest = stripe.paymentRequest({
+      country: "US",
+      currency: "usd",
+      total: {
+        label: config.title || t("quickPaymentPage"),
+        amount: dollarsToCents(totalAmount),
+      },
+      requestPayerName: true,
+      requestPayerEmail: true,
+    });
+
+    paymentRequest.canMakePayment().then((result) => {
+      if (!result) {
+        setWalletRequest(null);
+        setWalletAvailable(false);
+        return;
+      }
+      setWalletRequest(paymentRequest);
+      setWalletAvailable(true);
+    });
+
+    paymentRequest.on("paymentmethod", async (event) => {
+      try {
+        const payload = await apiRequest(`/public/pay/${slug}/create-payment-intent`, {
+          method: "POST",
+          body: {
+            amount: totalAmount,
+            payerEmail: event.payerEmail || payerEmail,
+            payerName: event.payerName || payerName,
+            paymentMethod: "wallet",
+            fieldResponses: customResponses,
+            achAuthorizationAccepted: false,
+          },
+        });
+
+        const confirmResult = await stripe.confirmCardPayment(
+          payload.clientSecret,
+          { payment_method: event.paymentMethod.id },
+          { handleActions: false },
+        );
+
+        if (confirmResult.error) {
+          event.complete("fail");
+          throw new Error(confirmResult.error.message || t("stripeConfirmationFailed"));
+        }
+
+        if (confirmResult.paymentIntent?.status === "requires_action") {
+          const actionResult = await stripe.confirmCardPayment(payload.clientSecret);
+          if (actionResult.error) {
+            event.complete("fail");
+            throw new Error(actionResult.error.message || t("stripeConfirmationFailed"));
+          }
+        }
+
+        const sync = await apiRequest(`/public/pay/${slug}/confirm`, {
+          method: "POST",
+          body: { paymentIntentId: payload.paymentIntentId },
+        });
+
+        const isSuccess = sync.status === "success";
+        event.complete(isSuccess ? "success" : "fail");
+        if (isSuccess) {
+          onResult({
+            type: "success",
+            message: t("paymentSuccessConfirmation"),
+            transactionId: sync.transactionId,
+            payerEmail: event.payerEmail || payerEmail,
+            amount: totalAmount,
+          });
+        } else {
+          onResult({
+            type: "failure",
+            message: t("paymentStatusMessage", { status: sync.status }),
+            transactionId: sync.transactionId,
+          });
+        }
+      } catch (err) {
+        event.complete("fail");
+        const msg = t("paymentFailedMessage", { message: err.message });
+        setStripeError(msg);
+        setTimeout(() => stripeErrorRef.current?.focus(), 50);
+      }
+    });
+  }, [stripe, slug, amount, config.fixedAmount, config.title, payerEmail, payerName, customResponses, t, onResult]);
 
   return (
     <form className="public-form" onSubmit={submit} noValidate aria-label={t("paymentForm")}>
@@ -445,6 +550,14 @@ function PublicCheckoutForm({ slug, config, onResult }) {
           </div>
         ) : (
           <>
+            {walletAvailable && walletRequest && (
+              <>
+                <div className="wallet-bar" role="group" aria-label={t("expressCheckoutOptions")}>
+                  <PaymentRequestButtonElement options={{ paymentRequest: walletRequest }} />
+                </div>
+                <div className="wallet-divider" aria-hidden="true"><span>{t("orPayWithCard")}</span></div>
+              </>
+            )}
             <p id="card-element-label" className="card-label">{t("cardDetails")}</p>
             <div className="stripe-box" aria-labelledby="card-element-label">
               <CardElement options={{ hidePostalCode: false }} />
@@ -549,16 +662,9 @@ function PublicPaymentPage() {
           {result ? (
             <PaymentResultView result={result} onRetry={() => setResult(null)} />
           ) : STRIPE_KEY && stripePromise ? (
-            <>
-              <div className="wallet-bar" role="group" aria-label={t("expressCheckoutOptions")}>
-                <button type="button" className="wallet-btn" disabled title={t("applePayUnavailable")}>{t("applePay")}</button>
-                <button type="button" className="wallet-btn" disabled title={t("googlePayUnavailable")}>{t("gPay")}</button>
-              </div>
-              <div className="wallet-divider" aria-hidden="true"><span>{t("orPayWithCard")}</span></div>
-              <Elements stripe={stripePromise}>
-                <PublicCheckoutForm slug={slug} config={config} onResult={setResult} />
-              </Elements>
-            </>
+            <Elements stripe={stripePromise}>
+              <PublicCheckoutForm slug={slug} config={config} onResult={setResult} />
+            </Elements>
           ) : (
             <p className="error">
               {t("missingStripeKey")}
