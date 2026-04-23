@@ -7,6 +7,7 @@ import { getContrastColor } from "./utils/color.js";
 import ActivityFeed from "./components/ActivityFeed.jsx";
 import { LanguageProvider, LANGUAGE_OPTIONS, useI18n } from "./i18n.js";
 import { localizeSeededText } from "./utils/localizeSeededText.js";
+import HomePage from "./HomePage.jsx";
 
 const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:4000";
 const STRIPE_KEY = import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY || "";
@@ -1810,7 +1811,10 @@ function App() {
     <LanguageProvider>
       <BrowserRouter>
         <Routes>
-          <Route path="/" element={<AdminApp />} />
+          <Route path="/" element={<HomePage />} />
+          <Route path="/dashboard" element={<AdminApp />} />
+          <Route path="/login" element={<AdminApp />} />
+          <Route path="/signup" element={<AdminApp />} />
           <Route path="/pay/:slug" element={<PublicPaymentPage />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
