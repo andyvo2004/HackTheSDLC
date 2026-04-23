@@ -1,0 +1,66 @@
+import "dotenv/config";
+import express from "express";
+import cors from "cors";
+import helmet from "helmet";
+import morgan from "morgan";
+import bcrypt from "bcryptjs";
+import { v4 as uuidv4 } from "uuid";
+import { initDb, db } from "./db.js";
+import { authRouter } from "./routes/auth.js";
+import { pagesRouter } from "./routes/pages.js";
+import { publicRouter } from "./routes/public.js";
+import { reportsRouter } from "./routes/reports.js";
+import { requireAuth } from "./middleware/requireAuth.js";
+import { registerStripeWebhook } from "./routes/webhooks.js";
+
+const app = express();
+const port = Number(process.env.PORT || 4000);
+
+app.use(helmet());
+app.use(cors());
+registerStripeWebhook(app);
+app.use(express.json({ limit: "1mb" }));
+app.use(morgan("dev"));
+
+app.get("/health", (_req, res) => {
+  res.json({ ok: true, service: "qpp-backend", timestamp: new Date().toISOString() });
+});
+
+app.use("/auth", authRouter);
+app.use("/admin/pages", requireAuth, pagesRouter);
+app.use("/admin/reports", requireAuth, reportsRouter);
+app.use("/public", publicRouter);
+
+app.use((err, _req, res, _next) => {
+  console.error(err);
+  res.status(500).json({ error: "Internal server error" });
+});
+
+async function seedAdmin() {
+  const email = process.env.ADMIN_EMAIL;
+  const password = process.env.ADMIN_PASSWORD;
+  if (!email || !password) return;
+
+  const existing = await db.get("SELECT id FROM admin_users WHERE email = ?", [email]);
+  if (existing) return;
+
+  const hash = await bcrypt.hash(password, 10);
+  await db.run(
+    "INSERT INTO admin_users (id, email, password_hash, created_at) VALUES (?, ?, ?, ?)",
+    [uuidv4(), email, hash, new Date().toISOString()],
+  );
+  console.log(`Seeded admin user: ${email}`);
+}
+
+async function bootstrap() {
+  await initDb();
+  await seedAdmin();
+  app.listen(port, () => {
+    console.log(`QPP backend listening on http://localhost:${port}`);
+  });
+}
+
+bootstrap().catch((err) => {
+  console.error("Failed to boot server", err);
+  process.exit(1);
+});
