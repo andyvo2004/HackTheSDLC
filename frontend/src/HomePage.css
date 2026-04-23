@@ -313,6 +313,8 @@ section {
 .logo-track-mask {
   position: relative;
   overflow: hidden;
+  display: flex;
+  align-items: center;
   border-top: 1px solid rgba(180, 199, 236, 0.18);
   border-bottom: 1px solid rgba(180, 199, 236, 0.18);
   background: rgba(11, 18, 40, 0.55);
@@ -408,6 +410,9 @@ section {
 
 .logo-pill {
   min-width: 9.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   padding: 0.6rem 0.9rem;
   text-align: center;
   color: #d9e4ff;
