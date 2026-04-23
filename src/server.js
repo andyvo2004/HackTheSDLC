@@ -14,6 +14,8 @@ import { requireAuth } from "./middleware/requireAuth.js";
 import { requireRole, Roles } from "./middleware/requireRole.js";
 import { registerStripeWebhook } from "./routes/webhooks.js";
 import { adminUsersRouter } from "./routes/adminUsers.js";
+import { feedClients } from "./feed.js";
+import { verifyToken } from "./lib/auth.js";
 
 const app = express();
 const port = Number(process.env.PORT || 4000);
@@ -46,6 +48,33 @@ app.use(
 );
 app.use("/admin/users", requireAuth, requireRole([Roles.OWNER]), adminUsersRouter);
 app.use("/public", publicRouter);
+
+app.get("/api/feed", (req, res) => {
+  const token = req.query.token;
+  try {
+    if (!token) throw new Error("Missing token");
+    verifyToken(token);
+  } catch {
+    return res.status(401).end();
+  }
+
+  res.setHeader("Content-Type", "text/event-stream");
+  res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("Connection", "keep-alive");
+  res.setHeader("X-Accel-Buffering", "no");
+  res.flushHeaders();
+
+  const keepAlive = setInterval(() => {
+    res.write(": keepalive\n\n");
+  }, 30000);
+
+  feedClients.add(res);
+
+  req.on("close", () => {
+    clearInterval(keepAlive);
+    feedClients.delete(res);
+  });
+});
 
 app.use((err, _req, res, _next) => {
   console.error(err);

@@ -1,142 +1,140 @@
-# HealthyHackers - QPP Backend
+# Quick Payment Pages (QPP)
+> Waystar Hackathon Challenge — Full-Stack Payment Platform
 
-Backend API for the Quick Payment Pages hackathon challenge.
+## Live Demo
+- **Application URL:** [YOUR_DEPLOYED_URL]
+- **Admin Login:** Use credentials from your .env (`ADMIN_EMAIL` / `ADMIN_PASSWORD`)
+- **Demo Payment Pages:**
+  - `/pay/yoga-class` — Fixed amount, custom fields
+  - `/pay/parking-fee` — Range amount, license plate field
 
-## Tech stack
+## What is QPP?
+Quick Payment Pages is a hosted, self-service payment platform that lets providers create branded, configurable online payment pages in minutes. Admins configure pages with custom branding, payment rules, and custom data fields — then share them via URL, iframe, or QR code.
 
-- Node.js + Express
-- SQLite (`sqlite3`)
-- JWT auth
-- Role-based authorization (`owner`, `editor`, `viewer`)
+## Architecture
 
-## Quick start
+```
+[Browser/Payer]  ──→  [React + Vite Frontend :5173]
+                              │
+                        [Vite Proxy]
+                              │
+[Admin Browser]  ──→  [Express API :3001]  ──→  [SQLite Database]
+                              │
+                       [Stripe API (sandbox)]
+                              │
+                    [SMTP / Resend (email)]
+```
 
-1. Install dependencies:
-   - `./dev-env.sh npm install`
-2. Configure environment:
-   - `cp .env.example .env`
-3. Start server:
-   - `./dev-env.sh npm run dev`
+## Tech Stack
 
-Server runs at `http://localhost:4000` by default.
+| Layer     | Technology                              |
+|-----------|-----------------------------------------|
+| Frontend  | React 18 + Vite, vanilla CSS            |
+| Backend   | Node.js + Express                       |
+| Database  | SQLite (via better-sqlite3)             |
+| Payments  | Stripe (sandbox/test mode only)         |
+| Email     | Nodemailer / SMTP (stub mode in dev)    |
+| Auth      | JWT (jsonwebtoken)                      |
 
-## Frontend (React + Vite)
+## Database Schema
 
-1. Install frontend dependencies:
-   - `cd frontend`
-   - `../dev-env.sh npm install`
-2. Start frontend:
-   - `cp .env.example .env`
-   - `../dev-env.sh npm run dev`
-3. Optional API URL override:
-   - `VITE_API_URL=http://localhost:4000`
-   - `VITE_STRIPE_PUBLISHABLE_KEY=pk_test_...`
+**Tables:** `admin_users`, `payment_pages`, `payment_page_versions`, `custom_fields`, `transactions`, `field_responses`, `page_views`
 
-Frontend routes:
-- `/` admin dashboard
-- `/pay/:slug` public payment checkout (Stripe Elements)
+Key relationships:
+- `payment_pages` → `custom_fields` (one-to-many)
+- `payment_pages` → `transactions` (one-to-many)
+- `transactions` → `field_responses` (one-to-many)
+- `payment_pages` → `payment_page_versions` (versioning/history)
 
-## Local JS "venv" style setup
+## Environment Variables
 
-This repo includes `dev-env.sh` so you can run Node/npm locally without relying on system npm/Homebrew permissions.
+### Backend (.env)
 
-- Use it for all Node commands:
-  - `./dev-env.sh npm install`
-  - `./dev-env.sh npm run dev`
-  - `./dev-env.sh node -v`
+| Variable               | Description                              | Required |
+|------------------------|------------------------------------------|----------|
+| `PORT`                 | Express server port (default 3001)       | No       |
+| `JWT_SECRET`           | Secret for signing JWT tokens            | Yes      |
+| `ADMIN_EMAIL`          | Seeded owner account email               | Yes      |
+| `ADMIN_PASSWORD`       | Seeded owner account password            | Yes      |
+| `DB_PATH`              | Path to SQLite database file             | No       |
+| `STRIPE_SECRET_KEY`    | Must start with `sk_test_`              | Yes      |
+| `STRIPE_WEBHOOK_SECRET`| Stripe webhook signing secret            | Yes      |
+| `SMTP_HOST`            | SMTP server hostname                     | No       |
+| `SMTP_PORT`            | SMTP server port                         | No       |
+| `SMTP_USER`            | SMTP username                            | No       |
+| `SMTP_PASS`            | SMTP password                            | No       |
+| `FROM_EMAIL`           | Sender email address                     | No       |
 
-## Environment variables
+### Frontend (.env)
 
-See `.env.example`.
+| Variable                      | Description                                          | Required |
+|-------------------------------|------------------------------------------------------|----------|
+| `VITE_API_URL`                | Backend API URL (default http://localhost:3001)      | Yes      |
+| `VITE_STRIPE_PUBLISHABLE_KEY` | Must start with `pk_test_`                          | Yes      |
 
-- `PORT`: API port
-- `JWT_SECRET`: token signing secret
-- `ADMIN_EMAIL` / `ADMIN_PASSWORD`: auto-seeded admin login
-- `BASE_PUBLIC_URL`: base URL used to generate share links
-- `DB_PATH`: sqlite file path
-- `STRIPE_SECRET_KEY`: Stripe test secret key
-- `STRIPE_WEBHOOK_SECRET`: Stripe webhook signing secret
-- `EMAIL_FROM`: sender address for confirmations
-- `SMTP_HOST` / `SMTP_PORT` / `SMTP_SECURE` / `SMTP_USER` / `SMTP_PASS`: SMTP email config
+## Local Setup
 
-## API overview
+```bash
+# 1. Clone the repo
+git clone [your-repo-url]
+cd qpp
 
-### Health
+# 2. Backend setup
+cp .env.example .env
+# Fill in .env values (JWT_SECRET, ADMIN_EMAIL, ADMIN_PASSWORD, STRIPE keys)
+npm install
+npm run dev   # Starts on http://localhost:3001
 
-- `GET /health`
+# 3. Frontend setup (new terminal)
+cd frontend
+cp .env.example .env
+# Set VITE_STRIPE_PUBLISHABLE_KEY=pk_test_...
+npm install
+npm run dev   # Starts on http://localhost:5173
 
-### Auth
+# 4. Access the app
+# Admin portal: http://localhost:5173
+# Public payment page: http://localhost:5173/pay/[slug]
+```
 
-- `POST /auth/login`
-  - Body: `{ "email": "...", "password": "..." }`
-  - Returns JWT token + role
-- `GET /auth/me` (Bearer token required)
-  - Returns current authenticated admin profile
+## Stripe Test Cards
 
-### Admin - Payment pages (Bearer token required)
+| Card Number          | Result                              |
+|----------------------|-------------------------------------|
+| 4242 4242 4242 4242  | Payment succeeds                    |
+| 4000 0000 0000 0002  | Card declined                       |
+| 4000 0025 0000 3155  | Requires 3D Secure authentication   |
 
-- `GET /admin/pages`
-- `GET /admin/pages/:id`
-- `POST /admin/pages` (editor/owner)
-- `PUT /admin/pages/:id` (editor/owner)
-- `PATCH /admin/pages/:id/status` (editor/owner)
-- `GET /admin/pages/:id/share` (public URL + iframe snippet + QR code data URL)
-- `GET /admin/pages/:id/versions` (published version history)
-- `POST /admin/pages/:id/publish` (publish saved draft)
-- `POST /admin/pages/:id/rollback` (rollback from a prior version)
+Use any future expiry date, any 3-digit CVV, any billing zip.
 
-### Public payment endpoints
+## Roles
 
-- `GET /public/pay/:slug` (retrieve active page config)
-- `POST /public/pay/:slug/create-payment-intent` (creates Stripe PaymentIntent + pending transaction)
-  - Supports `paymentMethod` (`card`, `wallet`, `ach`)
-  - For `ach`, include `achAuthorizationAccepted: true`
-- `POST /public/pay/:slug/confirm` (syncs transaction status from Stripe intent)
+| Role   | Capabilities                                                    |
+|--------|-----------------------------------------------------------------|
+| Owner  | Full access — manage pages, users, reports, settings            |
+| Editor | Create and edit payment pages, view reports                     |
+| Viewer | View pages and reports only (read-only)                         |
 
-### Webhooks
+## API Overview
 
-- `POST /webhooks/stripe` (Stripe event receiver for payment status updates)
+Full API documentation is available in the codebase. Key endpoint groups:
 
-### Admin reporting (Bearer token required)
+- `POST /api/auth/login` — Admin login
+- `GET/POST/PATCH/DELETE /api/pages` — Payment page management
+- `GET /public/pay/:slug` — Public page config (no auth)
+- `POST /public/pay/:slug/intent` — Create Stripe PaymentIntent
+- `POST /public/pay/:slug/confirm` — Confirm payment
+- `GET /api/reports/transactions` — Transaction list with filters
+- `GET /api/reports/export` — CSV export
+- `GET /api/feed` — SSE live activity feed (auth required)
 
-- `GET /admin/reports/transactions?from=&to=&pageId=&status=&paymentMethod=`
-- `GET /admin/reports/summary`
-- `GET /admin/reports/transactions.csv?from=&to=&pageId=&status=&paymentMethod=`
-- `GET /admin/reports/insights` (funnel + trend + page performance)
+## Stripe Webhooks (Local Dev)
 
-### Admin user management (owner only)
+```bash
+# Install Stripe CLI
+stripe listen --forward-to localhost:3001/webhooks/stripe
+```
 
-- `GET /admin/users`
-- `POST /admin/users`
-- `PATCH /admin/users/:id/role`
-- `PATCH /admin/users/:id/password`
+## Product Differentiator: Live Activity Feed
 
-## Role permission matrix
-
-- `viewer`
-  - Can: read page configs, read reports/exports
-  - Cannot: create/update/toggle pages, manage admin users
-- `editor`
-  - Can: everything `viewer` can, plus create/update/toggle pages
-  - Cannot: manage admin users
-- `owner`
-  - Full access, including admin user management and role assignment
-
-## Current implementation status
-
-- Implemented:
-  - Admin login with JWT
-  - Role-based permissions (owner/editor/viewer)
-  - Payment page CRUD + active toggle
-  - Branding/amount/custom fields/GL codes/email template persistence
-  - Public payment page retrieval
-  - Stripe test-mode PaymentIntent flow
-  - Stripe webhook transaction status updates
-  - Transaction storage + field responses
-  - SMTP confirmation email support (with local stub fallback)
-  - Reporting summary + CSV export with active filters
-  - Insights analytics endpoint (funnel, trends, page performance)
-  - Draft/publish/rollback payment page versioning
-- Not yet implemented:
-  - Full wallet/ACH client-side checkout UX and capability detection
-  - Fine-grained per-page/team permissions
+The admin dashboard features a real-time payment activity feed powered by Server-Sent Events (SSE). Every successful payment broadcasts instantly to all connected admin sessions, giving providers immediate awareness without polling or refreshing. This creates a noticeably more professional admin experience than static dashboards.

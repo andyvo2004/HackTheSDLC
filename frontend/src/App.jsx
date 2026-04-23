@@ -1,8 +1,10 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { BrowserRouter, Navigate, Route, Routes, useParams } from "react-router-dom";
 import { CardElement, Elements, useElements, useStripe } from "@stripe/react-stripe-js";
 import { loadStripe } from "@stripe/stripe-js";
 import { DistributionPanel } from "./components/DistributionPanel.jsx";
+import { getContrastColor } from "./utils/color.js";
+import ActivityFeed from "./components/ActivityFeed.jsx";
 
 const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:4000";
 const STRIPE_KEY = import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY || "";
@@ -106,8 +108,16 @@ function EmptyState({ title, message }) {
 
 function PaymentResultView({ result, onRetry }) {
   const success = result?.type === "success";
+  const headingRef = useRef(null);
+  useEffect(() => {
+    headingRef.current?.focus();
+  }, []);
   return (
-    <section className={`result-card ${success ? "success" : "failure"}`}>
+    <section
+      className={`result-card ${success ? "success" : "failure"}`}
+      role="alert"
+      aria-atomic="true"
+    >
       {success && (
         <div className="confetti" aria-hidden="true">
           {Array.from({ length: 18 }).map((_, i) => (
@@ -118,7 +128,7 @@ function PaymentResultView({ result, onRetry }) {
       <div className="result-icon" aria-hidden="true">
         {success ? "✓" : "!"}
       </div>
-      <h3>{success ? "Payment successful" : "Payment not completed"}</h3>
+      <h2 ref={headingRef} tabIndex={-1}>{success ? "Payment successful" : "Payment not completed"}</h2>
       <p>{result.message}</p>
       {result.transactionId && <small>Transaction ID: {result.transactionId}</small>}
       {!success && (
@@ -138,14 +148,47 @@ function PublicCheckoutForm({ slug, config, onResult }) {
   const [payerName, setPayerName] = useState("");
   const [customResponses, setCustomResponses] = useState({});
   const [achAuthorizationAccepted, setAchAuthorizationAccepted] = useState(false);
-  const [status, setStatus] = useState("");
+  const [fieldErrors, setFieldErrors] = useState({});
+  const [stripeError, setStripeError] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const stripeErrorRef = useRef(null);
+
+  const validate = () => {
+    const errors = {};
+    if (!payerName.trim()) errors.payerName = "Full name is required.";
+    if (!payerEmail.trim()) errors.payerEmail = "Email is required.";
+    if (config.amountMode === "range") {
+      const amt = Number(amount);
+      if (!amount || amt < Number(config.minAmount || 0)) {
+        errors.amount = `Amount must be at least $${Number(config.minAmount || 0).toFixed(2)}.`;
+      } else if (config.maxAmount && amt > Number(config.maxAmount)) {
+        errors.amount = `Amount must be at most $${Number(config.maxAmount || 0).toFixed(2)}.`;
+      }
+    }
+    if (config.amountMode === "user_entered" && (!amount || Number(amount) <= 0)) {
+      errors.amount = "Please enter a valid amount.";
+    }
+    config.customFields?.forEach((field) => {
+      if (field.required && !customResponses[field.id]) {
+        errors[field.id] = `${field.label} is required.`;
+      }
+    });
+    return errors;
+  };
 
   const submit = async (e) => {
     e.preventDefault();
+    const errors = validate();
+    if (Object.keys(errors).length > 0) {
+      setFieldErrors(errors);
+      const firstKey = Object.keys(errors)[0];
+      setTimeout(() => document.getElementById(`field-${firstKey}`)?.focus(), 50);
+      return;
+    }
+    setFieldErrors({});
     if (!stripe || !elements) return;
     setSubmitting(true);
-    setStatus("");
+    setStripeError("");
     try {
       const payload = await apiRequest(`/public/pay/${slug}/create-payment-intent`, {
         method: "POST",
@@ -163,14 +206,14 @@ function PublicCheckoutForm({ slug, config, onResult }) {
       const confirmResult = await stripe.confirmCardPayment(payload.clientSecret, {
         payment_method: {
           card: cardElement,
-          billing_details: {
-            email: payerEmail,
-            name: payerName,
-          },
+          billing_details: { email: payerEmail, name: payerName },
         },
       });
       if (confirmResult.error) {
-        throw new Error(confirmResult.error.message || "Stripe confirmation failed");
+        const msg = confirmResult.error.message || "Stripe confirmation failed";
+        setStripeError(msg);
+        setTimeout(() => stripeErrorRef.current?.focus(), 50);
+        throw new Error(msg);
       }
 
       const sync = await apiRequest(`/public/pay/${slug}/confirm`, {
@@ -180,40 +223,59 @@ function PublicCheckoutForm({ slug, config, onResult }) {
 
       if (sync.status === "success") {
         const msg = "Payment successful. Confirmation has been sent.";
-        setStatus(msg);
-        onResult({
-          type: "success",
-          message: msg,
-          transactionId: sync.transactionId,
-        });
+        onResult({ type: "success", message: msg, transactionId: sync.transactionId, payerEmail, amount });
       } else {
         const msg = `Payment status: ${sync.status}. Please check transaction details.`;
-        setStatus(msg);
-        onResult({
-          type: "failure",
-          message: msg,
-          transactionId: sync.transactionId,
-        });
+        onResult({ type: "failure", message: msg, transactionId: sync.transactionId });
       }
     } catch (err) {
-      const msg = `Payment failed: ${err.message}`;
-      setStatus(msg);
-      onResult({ type: "failure", message: msg });
+      if (!stripeError) {
+        const msg = `Payment failed: ${err.message}`;
+        setStripeError(msg);
+        setTimeout(() => stripeErrorRef.current?.focus(), 50);
+        onResult({ type: "failure", message: msg });
+      }
     } finally {
       setSubmitting(false);
     }
   };
 
   return (
-    <form className="public-form" onSubmit={submit}>
-      <label>
-        Full name
-        <input value={payerName} onChange={(e) => setPayerName(e.target.value)} required />
-      </label>
-      <label>
-        Email
-        <input type="email" value={payerEmail} onChange={(e) => setPayerEmail(e.target.value)} required />
-      </label>
+    <form className="public-form" onSubmit={submit} noValidate aria-label="Payment form">
+      <p className="required-note">* Required fields</p>
+      <fieldset className="form-fieldset">
+        <legend>Your Information</legend>
+        <div className="field-group">
+          <label htmlFor="field-payerName">Full name *</label>
+          <input
+            id="field-payerName"
+            value={payerName}
+            onChange={(e) => setPayerName(e.target.value)}
+            aria-required="true"
+            aria-invalid={!!fieldErrors.payerName}
+            aria-describedby={fieldErrors.payerName ? "err-payerName" : undefined}
+          />
+          {fieldErrors.payerName && (
+            <p id="err-payerName" className="field-error" tabIndex={-1}>{fieldErrors.payerName}</p>
+          )}
+        </div>
+        <div className="field-group">
+          <label htmlFor="field-payerEmail">Email *</label>
+          <input
+            id="field-payerEmail"
+            type="email"
+            value={payerEmail}
+            onChange={(e) => setPayerEmail(e.target.value)}
+            aria-required="true"
+            aria-invalid={!!fieldErrors.payerEmail}
+            aria-describedby={fieldErrors.payerEmail ? "err-payerEmail" : undefined}
+          />
+          {fieldErrors.payerEmail && (
+            <p id="err-payerEmail" className="field-error" tabIndex={-1}>{fieldErrors.payerEmail}</p>
+          )}
+        </div>
+      </fieldset>
+
       {config.amountMode === "fixed" && (
         <div className="amount-display">
           <span className="amount-label">Amount</span>
@@ -221,76 +283,132 @@ function PublicCheckoutForm({ slug, config, onResult }) {
         </div>
       )}
       {config.amountMode === "range" && (
-        <label>
-          {`Amount ($${Number(config.minAmount || 0).toFixed(2)} – $${Number(config.maxAmount || 0).toFixed(2)})`}
+        <div className="field-group">
+          <label htmlFor="field-amount">
+            {`Amount ($${Number(config.minAmount || 0).toFixed(2)} – $${Number(config.maxAmount || 0).toFixed(2)}) *`}
+          </label>
           <input
+            id="field-amount"
             type="number"
             min={config.minAmount || 0}
             max={config.maxAmount || undefined}
             step="0.01"
             value={amount}
             onChange={(e) => setAmount(e.target.value)}
-            required
+            aria-required="true"
+            aria-invalid={!!fieldErrors.amount}
+            aria-describedby={fieldErrors.amount ? "err-amount" : undefined}
           />
-        </label>
+          {fieldErrors.amount && (
+            <p id="err-amount" className="field-error" tabIndex={-1}>{fieldErrors.amount}</p>
+          )}
+        </div>
       )}
       {config.amountMode === "user_entered" && (
-        <label>
-          Amount
+        <div className="field-group">
+          <label htmlFor="field-amount">Amount *</label>
           <input
+            id="field-amount"
             type="number"
             min={0}
             step="0.01"
             value={amount}
             onChange={(e) => setAmount(e.target.value)}
-            required
+            aria-required="true"
+            aria-invalid={!!fieldErrors.amount}
+            aria-describedby={fieldErrors.amount ? "err-amount" : undefined}
           />
-        </label>
-      )}
-      {config.customFields?.map((field) => (
-        <label key={field.id}>
-          {field.label}{field.required ? " *" : ""}
-          {field.type === "dropdown" ? (
-            <select
-              required={field.required}
-              value={customResponses[field.id] || ""}
-              onChange={(e) => setCustomResponses((p) => ({ ...p, [field.id]: e.target.value }))}
-            >
-              <option value="">Select...</option>
-              {(field.options || []).map((opt) => <option key={opt} value={opt}>{opt}</option>)}
-            </select>
-          ) : field.type === "checkbox" ? (
-            <input
-              type="checkbox"
-              required={field.required}
-              checked={Boolean(customResponses[field.id])}
-              onChange={(e) => setCustomResponses((p) => ({ ...p, [field.id]: e.target.checked }))}
-            />
-          ) : (
-            <input
-              type={field.type === "date" ? "date" : field.type === "number" ? "number" : "text"}
-              required={field.required}
-              value={customResponses[field.id] || ""}
-              onChange={(e) => setCustomResponses((p) => ({ ...p, [field.id]: e.target.value }))}
-            />
+          {fieldErrors.amount && (
+            <p id="err-amount" className="field-error" tabIndex={-1}>{fieldErrors.amount}</p>
           )}
-        </label>
-      ))}
-      <label className="checkbox-line">
-        <input
-          type="checkbox"
-          checked={achAuthorizationAccepted}
-          onChange={(e) => setAchAuthorizationAccepted(e.target.checked)}
-        />
-        I authorize bank transfer payment processing if ACH is selected.
-      </label>
-      <div className="stripe-box">
-        <CardElement options={{ hidePostalCode: false }} />
-      </div>
-      <button type="submit" disabled={submitting || !stripe || !elements}>
+        </div>
+      )}
+
+      {config.customFields?.length > 0 && (
+        <fieldset className="form-fieldset">
+          <legend>Additional Details</legend>
+          {config.customFields.map((field) => (
+            <div key={field.id} className={field.type === "checkbox" ? "checkbox-group" : "field-group"}>
+              {field.type === "checkbox" ? (
+                <>
+                  <input
+                    id={`field-${field.id}`}
+                    type="checkbox"
+                    checked={Boolean(customResponses[field.id])}
+                    onChange={(e) => setCustomResponses((p) => ({ ...p, [field.id]: e.target.checked }))}
+                    aria-required={field.required}
+                    aria-invalid={!!fieldErrors[field.id]}
+                    aria-describedby={fieldErrors[field.id] ? `err-${field.id}` : undefined}
+                  />
+                  <label htmlFor={`field-${field.id}`}>{field.label}{field.required ? " *" : ""}</label>
+                </>
+              ) : (
+                <>
+                  <label htmlFor={`field-${field.id}`}>{field.label}{field.required ? " *" : ""}</label>
+                  {field.type === "dropdown" ? (
+                    <select
+                      id={`field-${field.id}`}
+                      value={customResponses[field.id] || ""}
+                      onChange={(e) => setCustomResponses((p) => ({ ...p, [field.id]: e.target.value }))}
+                      aria-required={field.required}
+                      aria-invalid={!!fieldErrors[field.id]}
+                      aria-describedby={fieldErrors[field.id] ? `err-${field.id}` : undefined}
+                    >
+                      <option value="">Select an option</option>
+                      {(field.options || []).map((opt) => <option key={opt} value={opt}>{opt}</option>)}
+                    </select>
+                  ) : (
+                    <input
+                      id={`field-${field.id}`}
+                      type={field.type === "date" ? "date" : field.type === "number" ? "number" : "text"}
+                      value={customResponses[field.id] || ""}
+                      onChange={(e) => setCustomResponses((p) => ({ ...p, [field.id]: e.target.value }))}
+                      aria-required={field.required}
+                      aria-invalid={!!fieldErrors[field.id]}
+                      aria-describedby={fieldErrors[field.id] ? `err-${field.id}` : undefined}
+                    />
+                  )}
+                </>
+              )}
+              {fieldErrors[field.id] && (
+                <p id={`err-${field.id}`} className="field-error" tabIndex={-1}>{fieldErrors[field.id]}</p>
+              )}
+            </div>
+          ))}
+        </fieldset>
+      )}
+
+      <fieldset className="form-fieldset">
+        <legend>Payment Details</legend>
+        <div className="checkbox-group">
+          <input
+            id="ach-auth"
+            type="checkbox"
+            checked={achAuthorizationAccepted}
+            onChange={(e) => setAchAuthorizationAccepted(e.target.checked)}
+          />
+          <label htmlFor="ach-auth">I authorize bank transfer payment processing if ACH is selected.</label>
+        </div>
+        <p id="card-element-label" className="card-label">Card Details *</p>
+        <div className="stripe-box" aria-labelledby="card-element-label">
+          <CardElement options={{ hidePostalCode: false }} />
+        </div>
+        {stripeError && (
+          <p
+            ref={stripeErrorRef}
+            className="field-error"
+            role="alert"
+            aria-live="assertive"
+            tabIndex={-1}
+          >
+            {stripeError}
+          </p>
+        )}
+      </fieldset>
+
+      <button type="submit" className="pay-btn" disabled={submitting || !stripe || !elements}>
         {submitting ? "Processing..." : "Complete payment"}
       </button>
-      {status && <p className="status-text">{status}</p>}
     </form>
   );
 }
@@ -332,26 +450,36 @@ function PublicPaymentPage() {
       </main>
     );
   }
+
+  const headerTextColor = getContrastColor(config.brandColor);
+
   return (
     <main className="public-shell">
       <section className="public-card">
-        <header className="public-header" style={{ background: config.brandColor || "#0f63ff" }}>
-          {config.logoUrl && <img src={config.logoUrl} alt={config.title} className="public-logo" />}
-          <p>{config.title}</p>
-          <small>{config.subtitle}</small>
+        <header className="public-header" style={{ background: config.brandColor || "#0f63ff", color: headerTextColor }}>
+          {config.logoUrl && (
+            <img
+              src={config.logoUrl}
+              alt={`${config.title} logo`}
+              className="public-logo"
+              onError={(e) => { e.target.style.display = "none"; }}
+            />
+          )}
+          <h1>{config.title}</h1>
+          {config.subtitle && <p className="public-subtitle">{config.subtitle}</p>}
         </header>
         <div className="public-body">
-          <p className="subtle">{config.description}</p>
+          {config.description && <p className="subtle">{config.description}</p>}
           <div className="preview-banner">{config.headerMessage || "Complete secure payment below."}</div>
           {result ? (
             <PaymentResultView result={result} onRetry={() => setResult(null)} />
           ) : STRIPE_KEY && stripePromise ? (
             <>
-              <div className="wallet-bar">
+              <div className="wallet-bar" role="group" aria-label="Express checkout options">
                 <button type="button" className="wallet-btn" disabled title="Apple Pay not available in this environment">Apple Pay</button>
                 <button type="button" className="wallet-btn" disabled title="Google Pay not available in this environment">G Pay</button>
               </div>
-              <div className="wallet-divider"><span>or pay with card</span></div>
+              <div className="wallet-divider" aria-hidden="true"><span>or pay with card</span></div>
               <Elements stripe={stripePromise}>
                 <PublicCheckoutForm slug={slug} config={config} onResult={setResult} />
               </Elements>
@@ -361,7 +489,7 @@ function PublicPaymentPage() {
               Missing Stripe publishable key. Set `VITE_STRIPE_PUBLISHABLE_KEY` in your frontend environment.
             </p>
           )}
-          <small>{config.footerMessage}</small>
+          {config.footerMessage && <footer className="public-footer">{config.footerMessage}</footer>}
         </div>
       </section>
     </main>
@@ -409,6 +537,15 @@ function AdminApp() {
   };
   const removeBuilderField = (idx) => setCustomFieldsBuilder((prev) => prev.filter((_, i) => i !== idx));
   const updateBuilderField = (idx, key, val) => setCustomFieldsBuilder((prev) => prev.map((f, i) => i === idx ? { ...f, [key]: val } : f));
+  const moveBuilderField = (idx, direction) => {
+    setCustomFieldsBuilder((prev) => {
+      const arr = [...prev];
+      const target = direction === "up" ? idx - 1 : idx + 1;
+      if (target < 0 || target >= arr.length) return arr;
+      [arr[idx], arr[target]] = [arr[target], arr[idx]];
+      return arr.map((f, i) => ({ ...f, order: i }));
+    });
+  };
 
   const canEditPages = useMemo(
     () => user && ["owner", "editor"].includes(user.role),
@@ -591,34 +728,38 @@ function AdminApp() {
       <main className="auth-shell">
         <section className="auth-card">
           <p className="eyebrow">Waystar Inspired Experience</p>
-          <h1>Quick Payment Pages</h1>
+          <h1>Admin Sign In</h1>
           <p className="auth-subtitle">
             Clean, modern admin control for high-trust payment flows.
           </p>
-          <form className="form-grid" onSubmit={handleLogin}>
-            <label>
-              Email
+          <form className="form-grid" onSubmit={handleLogin} aria-label="Admin sign in">
+            <div className="field-group">
+              <label htmlFor="login-email">Email address</label>
               <input
+                id="login-email"
                 type="email"
                 value={loginForm.email}
                 onChange={(e) => setLoginForm((p) => ({ ...p, email: e.target.value }))}
                 required
+                aria-required="true"
               />
-            </label>
-            <label>
-              Password
+            </div>
+            <div className="field-group">
+              <label htmlFor="login-password">Password</label>
               <input
+                id="login-password"
                 type="password"
                 value={loginForm.password}
                 onChange={(e) => setLoginForm((p) => ({ ...p, password: e.target.value }))}
                 required
+                aria-required="true"
               />
-            </label>
+            </div>
             <button type="submit" disabled={loading}>
               {loading ? "Signing in..." : "Sign in"}
             </button>
           </form>
-          {error && <p className="error">{error}</p>}
+          {error && <div role="alert" aria-live="assertive" className="error">{error}</div>}
         </section>
       </main>
     );
@@ -634,18 +775,19 @@ function AdminApp() {
           <span />
           <span />
         </div>
-        <nav>
+        <nav aria-label="Admin navigation">
           {["overview", "insights", "pages", "create", "transactions"].map((item) => (
             <button
               key={item}
               className={view === item ? "nav-btn active" : "nav-btn"}
               onClick={() => setView(item)}
+              aria-current={view === item ? "page" : undefined}
             >
               {item[0].toUpperCase() + item.slice(1)}
             </button>
           ))}
         </nav>
-        <button className="logout-btn" onClick={handleLogout}>
+        <button className="logout-btn" onClick={handleLogout} aria-label="Sign out">
           Log out
         </button>
       </aside>
@@ -655,7 +797,7 @@ function AdminApp() {
           <p className="eyebrow">Healthcare Payments Control Center</p>
           <h1>Design-forward operations dashboard</h1>
         </header>
-        {error && <p className="error">{error}</p>}
+        {error && <div role="alert" aria-live="assertive" className="error">{error}</div>}
 
         {view === "overview" && (
           <>
@@ -713,6 +855,9 @@ function AdminApp() {
                   <h3>Payment pages</h3>
                   <p>{pages.length} configured pages across your payment portfolio.</p>
                 </section>
+                <section className="panel">
+                  <ActivityFeed authToken={token} />
+                </section>
               </>
             )}
           </>
@@ -768,14 +913,14 @@ function AdminApp() {
               <section className="panel">
                 <h3>Top page performance</h3>
                 <div className="table-wrap">
-                  <table>
+                  <table aria-label="Top page performance">
                     <thead>
                       <tr>
-                        <th>Page</th>
-                        <th>Views</th>
-                        <th>Transactions</th>
-                        <th>Success</th>
-                        <th>Revenue</th>
+                        <th scope="col">Page</th>
+                        <th scope="col">Views</th>
+                        <th scope="col">Transactions</th>
+                        <th scope="col">Success</th>
+                        <th scope="col">Revenue</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -809,14 +954,14 @@ function AdminApp() {
             <section className="panel">
               <h3>Configured pages</h3>
               <div className="table-wrap">
-                <table>
+                <table aria-label="Payment pages">
                   <thead>
                     <tr>
-                      <th>Title</th>
-                      <th>Slug</th>
-                      <th>Status</th>
-                      <th>Amount mode</th>
-                      <th>Actions</th>
+                      <th scope="col">Title</th>
+                      <th scope="col">Slug</th>
+                      <th scope="col">Status</th>
+                      <th scope="col">Amount mode</th>
+                      <th scope="col">Actions</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -827,29 +972,51 @@ function AdminApp() {
                         <td>{page.isActive ? "Active" : "Disabled"}</td>
                         <td>{page.amountMode}</td>
                         <td>
-                          <button className="tiny-btn" onClick={() => handleCopy(page.id)}>
+                          <button
+                            className="tiny-btn"
+                            onClick={() => handleCopy(page.id)}
+                            aria-label={`Copy URL for ${page.title}`}
+                          >
                             Copy URL
                           </button>
                           <button
                             className={`tiny-btn${selectedPage?.id === page.id ? " active" : ""}`}
                             onClick={() => setSelectedPage(selectedPage?.id === page.id ? null : page)}
+                            aria-label={selectedPage?.id === page.id ? `Close distribution panel for ${page.title}` : `Distribute ${page.title}`}
+                            aria-expanded={selectedPage?.id === page.id}
                           >
                             {selectedPage?.id === page.id ? "Close" : "Distribute"}
                           </button>
                           {canEditPages && (
                             <>
-                              <button className="tiny-btn" onClick={() => handleToggleStatus(page.id, page.isActive)}>
+                              <button
+                                className="tiny-btn"
+                                onClick={() => handleToggleStatus(page.id, page.isActive)}
+                                aria-label={page.isActive ? `Disable ${page.title}` : `Enable ${page.title}`}
+                              >
                                 {page.isActive ? "Disable" : "Enable"}
                               </button>
-                              <button className="tiny-btn" onClick={() => fetchVersions(page.id)}>
+                              <button
+                                className="tiny-btn"
+                                onClick={() => fetchVersions(page.id)}
+                                aria-label={`View versions for ${page.title}`}
+                              >
                                 Versions
                               </button>
                               {page.hasDraft && (
-                                <button className="tiny-btn" onClick={() => publishDraft(page.id)}>
+                                <button
+                                  className="tiny-btn"
+                                  onClick={() => publishDraft(page.id)}
+                                  aria-label={`Publish draft for ${page.title}`}
+                                >
                                   Publish Draft
                                 </button>
                               )}
-                              <button className="tiny-btn" onClick={() => rollbackLatest(page.id)}>
+                              <button
+                                className="tiny-btn"
+                                onClick={() => rollbackLatest(page.id)}
+                                aria-label={`Rollback ${page.title} to previous version`}
+                              >
                                 Rollback
                               </button>
                             </>
@@ -890,134 +1057,157 @@ function AdminApp() {
               {!canEditPages && (
                 <p className="error">Your role is read-only. Ask an owner to grant editor access.</p>
               )}
-              <form className="form-grid" onSubmit={handleCreatePage}>
-                <label>
-                  Page title
+              <form className="form-grid" onSubmit={handleCreatePage} aria-label="Create payment page">
+                <div className="field-group">
+                  <label htmlFor="cf-title">Page title *</label>
                   <input
+                    id="cf-title"
                     value={pageForm.title}
                     onChange={(e) => setPageForm((p) => ({ ...p, title: e.target.value }))}
                     required
+                    aria-required="true"
                   />
-                </label>
-                <label>
-                  Subtitle
+                </div>
+                <div className="field-group">
+                  <label htmlFor="cf-subtitle">Subtitle</label>
                   <input
+                    id="cf-subtitle"
                     value={pageForm.subtitle}
                     onChange={(e) => setPageForm((p) => ({ ...p, subtitle: e.target.value }))}
                   />
-                </label>
-                <label>
-                  Description
+                </div>
+                <div className="field-group">
+                  <label htmlFor="cf-description">Description</label>
                   <input
+                    id="cf-description"
                     value={pageForm.description}
                     onChange={(e) => setPageForm((p) => ({ ...p, description: e.target.value }))}
                   />
-                </label>
-                <label>
-                  Logo URL
+                </div>
+                <div className="field-group">
+                  <label htmlFor="cf-logoUrl">Logo URL</label>
                   <input
+                    id="cf-logoUrl"
                     type="url"
                     value={pageForm.logoUrl}
                     onChange={(e) => setPageForm((p) => ({ ...p, logoUrl: e.target.value }))}
                     placeholder="https://example.com/logo.png"
                   />
-                </label>
-                <label>
-                  URL slug
+                </div>
+                <div className="field-group">
+                  <label htmlFor="cf-slug">URL slug *</label>
                   <input
+                    id="cf-slug"
                     value={pageForm.slug}
                     onChange={(e) => setPageForm((p) => ({ ...p, slug: e.target.value.toLowerCase() }))}
                     required
+                    aria-required="true"
                   />
-                </label>
-                <label>
-                  Brand color
+                </div>
+                <div className="field-group">
+                  <label htmlFor="cf-brandColor">Brand color (hex)</label>
                   <input
+                    id="cf-brandColor"
                     type="color"
                     value={pageForm.brandColor}
                     onChange={(e) => setPageForm((p) => ({ ...p, brandColor: e.target.value }))}
                   />
-                </label>
-                <label>
-                  Header message
+                </div>
+                <div className="field-group">
+                  <label htmlFor="cf-headerMessage">Header message</label>
                   <input
+                    id="cf-headerMessage"
                     value={pageForm.headerMessage}
                     onChange={(e) => setPageForm((p) => ({ ...p, headerMessage: e.target.value }))}
                   />
-                </label>
-                <label>
-                  Footer message
+                </div>
+                <div className="field-group">
+                  <label htmlFor="cf-footerMessage">Footer message</label>
                   <input
+                    id="cf-footerMessage"
                     value={pageForm.footerMessage}
                     onChange={(e) => setPageForm((p) => ({ ...p, footerMessage: e.target.value }))}
                   />
-                </label>
-                <label>
-                  Amount mode
-                  <select
-                    value={pageForm.amountMode}
-                    onChange={(e) => setPageForm((p) => ({ ...p, amountMode: e.target.value }))}
-                  >
-                    <option value="fixed">Fixed</option>
-                    <option value="range">Range</option>
-                    <option value="user_entered">User entered</option>
-                  </select>
-                </label>
-                {pageForm.amountMode === "fixed" && (
-                  <label>
-                    Fixed amount
-                    <input
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      value={pageForm.fixedAmount}
-                      onChange={(e) => setPageForm((p) => ({ ...p, fixedAmount: e.target.value }))}
-                    />
-                  </label>
-                )}
-                {pageForm.amountMode === "range" && (
-                  <>
-                    <label>
-                      Minimum amount
+                </div>
+                <fieldset className="form-fieldset">
+                  <legend>Payment Amount Mode</legend>
+                  <div className="field-group">
+                    <label htmlFor="cf-amountMode">Amount mode</label>
+                    <select
+                      id="cf-amountMode"
+                      value={pageForm.amountMode}
+                      onChange={(e) => setPageForm((p) => ({ ...p, amountMode: e.target.value }))}
+                    >
+                      <option value="fixed">Fixed</option>
+                      <option value="range">Range</option>
+                      <option value="user_entered">User entered</option>
+                    </select>
+                  </div>
+                  {pageForm.amountMode === "fixed" && (
+                    <div className="field-group">
+                      <label htmlFor="cf-fixedAmount">Fixed amount</label>
                       <input
+                        id="cf-fixedAmount"
                         type="number"
                         min="0"
                         step="0.01"
-                        value={pageForm.minAmount}
-                        onChange={(e) => setPageForm((p) => ({ ...p, minAmount: e.target.value }))}
+                        value={pageForm.fixedAmount}
+                        onChange={(e) => setPageForm((p) => ({ ...p, fixedAmount: e.target.value }))}
                       />
-                    </label>
-                    <label>
-                      Maximum amount
-                      <input
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        value={pageForm.maxAmount}
-                        onChange={(e) => setPageForm((p) => ({ ...p, maxAmount: e.target.value }))}
-                      />
-                    </label>
-                  </>
-                )}
-                <label>
-                  GL codes (comma separated)
+                    </div>
+                  )}
+                  {pageForm.amountMode === "range" && (
+                    <>
+                      <div className="field-group">
+                        <label htmlFor="cf-minAmount">Minimum amount</label>
+                        <input
+                          id="cf-minAmount"
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={pageForm.minAmount}
+                          onChange={(e) => setPageForm((p) => ({ ...p, minAmount: e.target.value }))}
+                        />
+                      </div>
+                      <div className="field-group">
+                        <label htmlFor="cf-maxAmount">Maximum amount</label>
+                        <input
+                          id="cf-maxAmount"
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={pageForm.maxAmount}
+                          onChange={(e) => setPageForm((p) => ({ ...p, maxAmount: e.target.value }))}
+                        />
+                      </div>
+                    </>
+                  )}
+                </fieldset>
+                <div className="field-group">
+                  <label htmlFor="cf-glCodes">GL codes (comma separated)</label>
                   <input
+                    id="cf-glCodes"
                     value={pageForm.glCodes}
                     onChange={(e) => setPageForm((p) => ({ ...p, glCodes: e.target.value }))}
                   />
-                </label>
+                </div>
                 <div className="field-builder-header">
                   <span>Custom fields ({customFieldsBuilder.length}/10)</span>
-                  <button type="button" className="tiny-btn" onClick={addBuilderField}>+ Add field</button>
+                  <button type="button" className="tiny-btn" onClick={addBuilderField} aria-label="Add custom field">+ Add field</button>
                 </div>
                 {customFieldsBuilder.map((field, idx) => (
                   <div key={field.id} className="field-builder-row">
                     <input
+                      aria-label={`Custom field ${idx + 1} label`}
                       placeholder="Field label"
                       value={field.label}
                       onChange={(e) => updateBuilderField(idx, "label", e.target.value)}
                     />
-                    <select value={field.type} onChange={(e) => updateBuilderField(idx, "type", e.target.value)}>
+                    <select
+                      aria-label={`Custom field ${idx + 1} type`}
+                      value={field.type}
+                      onChange={(e) => updateBuilderField(idx, "type", e.target.value)}
+                    >
                       <option value="text">Text</option>
                       <option value="number">Number</option>
                       <option value="dropdown">Dropdown</option>
@@ -1026,6 +1216,7 @@ function AdminApp() {
                     </select>
                     {field.type === "dropdown" && (
                       <input
+                        aria-label={`Custom field ${idx + 1} dropdown options`}
                         placeholder="Options (comma separated)"
                         value={field.options}
                         onChange={(e) => updateBuilderField(idx, "options", e.target.value)}
@@ -1036,10 +1227,30 @@ function AdminApp() {
                         type="checkbox"
                         checked={field.required}
                         onChange={(e) => updateBuilderField(idx, "required", e.target.checked)}
+                        aria-label={`${field.label || `Field ${idx + 1}`} required`}
                       />
                       Required
                     </label>
-                    <button type="button" className="tiny-btn" onClick={() => removeBuilderField(idx)}>Remove</button>
+                    <button
+                      type="button"
+                      className="tiny-btn"
+                      onClick={() => moveBuilderField(idx, "up")}
+                      disabled={idx === 0}
+                      aria-label={`Move ${field.label || `field ${idx + 1}`} up`}
+                    >↑</button>
+                    <button
+                      type="button"
+                      className="tiny-btn"
+                      onClick={() => moveBuilderField(idx, "down")}
+                      disabled={idx === customFieldsBuilder.length - 1}
+                      aria-label={`Move ${field.label || `field ${idx + 1}`} down`}
+                    >↓</button>
+                    <button
+                      type="button"
+                      className="tiny-btn"
+                      onClick={() => removeBuilderField(idx)}
+                      aria-label={`Remove ${field.label || `field ${idx + 1}`}`}
+                    >Remove</button>
                   </div>
                 ))}
                 <button type="submit" disabled={loading || !canEditPages}>
@@ -1129,14 +1340,14 @@ function AdminApp() {
             <section className="panel">
               <h3>Recent transactions</h3>
               <div className="table-wrap">
-                <table>
+                <table aria-label="Recent transactions">
                   <thead>
                     <tr>
-                      <th>Amount</th>
-                      <th>Status</th>
-                      <th>Method</th>
-                      <th>Payer</th>
-                      <th>Created</th>
+                      <th scope="col">Amount</th>
+                      <th scope="col">Status</th>
+                      <th scope="col">Method</th>
+                      <th scope="col">Payer</th>
+                      <th scope="col">Created</th>
                     </tr>
                   </thead>
                   <tbody>

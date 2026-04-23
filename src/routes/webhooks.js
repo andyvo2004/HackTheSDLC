@@ -2,6 +2,7 @@ import express from "express";
 import { db } from "../db.js";
 import { getStripeClient } from "../lib/stripe.js";
 import { renderConfirmationEmail, sendConfirmationEmail } from "../lib/email.js";
+import { broadcastPaymentEvent } from "../feed.js";
 
 function mapStripeStatusToTxStatus(stripeStatus) {
   if (stripeStatus === "succeeded") return "success";
@@ -32,7 +33,7 @@ export function registerStripeWebhook(app) {
         const pi = event.data.object;
         const status = mapStripeStatusToTxStatus(pi.status);
         const tx = await db.get(
-          "SELECT t.*, p.title AS page_title, p.email_template AS page_email_template FROM transactions t JOIN payment_pages p ON p.id = t.page_id WHERE t.stripe_payment_intent_id = ?",
+          "SELECT t.*, p.title AS page_title, p.slug AS page_slug, p.email_template AS page_email_template FROM transactions t JOIN payment_pages p ON p.id = t.page_id WHERE t.stripe_payment_intent_id = ?",
           [pi.id],
         );
 
@@ -42,20 +43,33 @@ export function registerStripeWebhook(app) {
             [status, pi.id, inferMethodFromStripeIntent(pi), tx.id],
           );
 
-          if (status === "success" && tx.payer_email) {
-            const context = {
-              payerName: tx.payer_name,
+          if (status === "success") {
+            broadcastPaymentEvent({
+              type: "payment_succeeded",
+              transaction_id: tx.id,
               amount: tx.amount,
-              transactionId: tx.id,
-              date: tx.created_at,
-              customFields: {},
-            };
-            const emailBody = renderConfirmationEmail(tx.page_email_template, context);
-            await sendConfirmationEmail({
-              to: tx.payer_email,
-              subject: `Payment confirmation - ${tx.page_title}`,
-              body: emailBody,
+              currency: "usd",
+              payer_name: tx.payer_name || "Anonymous",
+              page_title: tx.page_title,
+              page_slug: tx.page_slug,
+              created_at: new Date().toISOString(),
             });
+
+            if (tx.payer_email) {
+              const context = {
+                payerName: tx.payer_name,
+                amount: tx.amount,
+                transactionId: tx.id,
+                date: tx.created_at,
+                customFields: {},
+              };
+              const emailBody = renderConfirmationEmail(tx.page_email_template, context);
+              await sendConfirmationEmail({
+                to: tx.payer_email,
+                subject: `Payment confirmation - ${tx.page_title}`,
+                body: emailBody,
+              });
+            }
           }
         }
       }

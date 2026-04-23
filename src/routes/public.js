@@ -4,6 +4,7 @@ import { z } from "zod";
 import { db } from "../db.js";
 import { renderConfirmationEmail, sendConfirmationEmail } from "../lib/email.js";
 import { dollarsToCents, getStripeClient, stripeEnabled } from "../lib/stripe.js";
+import { broadcastPaymentEvent } from "../feed.js";
 
 export const publicRouter = Router();
 
@@ -193,7 +194,7 @@ publicRouter.post("/pay/:slug/confirm", async (req, res, next) => {
     }
 
     const tx = await db.get(
-      "SELECT t.*, p.title AS page_title, p.email_template AS page_email_template FROM transactions t JOIN payment_pages p ON p.id = t.page_id WHERE t.stripe_payment_intent_id = ?",
+      "SELECT t.*, p.title AS page_title, p.slug AS page_slug, p.email_template AS page_email_template FROM transactions t JOIN payment_pages p ON p.id = t.page_id WHERE t.stripe_payment_intent_id = ?",
       [paymentIntentId],
     );
     if (!tx) return res.status(404).json({ error: "Transaction not found" });
@@ -212,20 +213,33 @@ publicRouter.post("/pay/:slug/confirm", async (req, res, next) => {
       [mappedStatus, intent.id, inferMethodFromStripeIntent(intent), tx.id],
     );
 
-    if (mappedStatus === "success" && tx.payer_email) {
-      const context = {
-        payerName: tx.payer_name,
+    if (mappedStatus === "success") {
+      broadcastPaymentEvent({
+        type: "payment_succeeded",
+        transaction_id: tx.id,
         amount: tx.amount,
-        transactionId: tx.id,
-        date: tx.created_at,
-        customFields: {},
-      };
-      const emailBody = renderConfirmationEmail(tx.page_email_template, context);
-      await sendConfirmationEmail({
-        to: tx.payer_email,
-        subject: `Payment confirmation - ${tx.page_title}`,
-        body: emailBody,
+        currency: "usd",
+        payer_name: tx.payer_name || "Anonymous",
+        page_title: tx.page_title,
+        page_slug: tx.page_slug,
+        created_at: new Date().toISOString(),
       });
+
+      if (tx.payer_email) {
+        const context = {
+          payerName: tx.payer_name,
+          amount: tx.amount,
+          transactionId: tx.id,
+          date: tx.created_at,
+          customFields: {},
+        };
+        const emailBody = renderConfirmationEmail(tx.page_email_template, context);
+        await sendConfirmationEmail({
+          to: tx.payer_email,
+          subject: `Payment confirmation - ${tx.page_title}`,
+          body: emailBody,
+        });
+      }
     }
 
     return res.json({
