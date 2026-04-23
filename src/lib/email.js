@@ -1,3 +1,5 @@
+import nodemailer from "nodemailer";
+
 export function renderConfirmationEmail(template, context) {
   const fallback = [
     `Hi ${context.payerName || "payer"},`,
@@ -20,6 +22,33 @@ export function renderConfirmationEmail(template, context) {
 }
 
 export async function sendConfirmationEmail({ to, subject, body }) {
-  // Hackathon-safe stub: logs payload while preserving async call boundary.
-  console.log("EMAIL_STUB", { to, subject, body });
+  const smtpHost = process.env.SMTP_HOST;
+  const smtpPort = Number(process.env.SMTP_PORT || 587);
+  const smtpSecure = String(process.env.SMTP_SECURE || "false").toLowerCase() === "true";
+  const smtpUser = process.env.SMTP_USER;
+  const smtpPass = process.env.SMTP_PASS;
+  const from = process.env.EMAIL_FROM || "no-reply@example.com";
+
+  if (!smtpHost || !smtpUser || !smtpPass) {
+    // Safe fallback for hackathon local development.
+    console.log("EMAIL_STUB", { to, subject, body });
+    return;
+  }
+
+  const transporter = nodemailer.createTransport({
+    host: smtpHost,
+    port: smtpPort,
+    secure: smtpSecure,
+    auth: {
+      user: smtpUser,
+      pass: smtpPass,
+    },
+  });
+
+  await transporter.sendMail({
+    from,
+    to,
+    subject,
+    text: body,
+  });
 }

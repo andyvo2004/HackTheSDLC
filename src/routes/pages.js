@@ -3,6 +3,7 @@ import { v4 as uuidv4 } from "uuid";
 import QRCode from "qrcode";
 import { z } from "zod";
 import { db } from "../db.js";
+import { requireRole, Roles } from "../middleware/requireRole.js";
 
 const customFieldSchema = z.object({
   id: z.string().optional(),
@@ -99,7 +100,7 @@ pagesRouter.get("/:id", async (req, res, next) => {
   }
 });
 
-pagesRouter.post("/", async (req, res, next) => {
+pagesRouter.post("/", requireRole([Roles.EDITOR, Roles.OWNER]), async (req, res, next) => {
   try {
     const parsed = pageSchema.safeParse(req.body);
     if (!parsed.success) {
@@ -167,7 +168,7 @@ pagesRouter.post("/", async (req, res, next) => {
   }
 });
 
-pagesRouter.put("/:id", async (req, res, next) => {
+pagesRouter.put("/:id", requireRole([Roles.EDITOR, Roles.OWNER]), async (req, res, next) => {
   try {
     const parsed = pageSchema.safeParse(req.body);
     if (!parsed.success) {
@@ -236,20 +237,24 @@ pagesRouter.put("/:id", async (req, res, next) => {
   }
 });
 
-pagesRouter.patch("/:id/status", async (req, res, next) => {
-  try {
-    const isActive = Boolean(req.body?.isActive);
-    const updated = await db.run(
-      "UPDATE payment_pages SET is_active = ?, updated_at = ? WHERE id = ?",
-      [isActive ? 1 : 0, new Date().toISOString(), req.params.id],
-    );
-    if (updated.changes === 0) return res.status(404).json({ error: "Page not found" });
-    const row = await db.get("SELECT * FROM payment_pages WHERE id = ?", [req.params.id]);
-    return res.json(mapPage(row, await listFields(req.params.id)));
-  } catch (err) {
-    next(err);
-  }
-});
+pagesRouter.patch(
+  "/:id/status",
+  requireRole([Roles.EDITOR, Roles.OWNER]),
+  async (req, res, next) => {
+    try {
+      const isActive = Boolean(req.body?.isActive);
+      const updated = await db.run(
+        "UPDATE payment_pages SET is_active = ?, updated_at = ? WHERE id = ?",
+        [isActive ? 1 : 0, new Date().toISOString(), req.params.id],
+      );
+      if (updated.changes === 0) return res.status(404).json({ error: "Page not found" });
+      const row = await db.get("SELECT * FROM payment_pages WHERE id = ?", [req.params.id]);
+      return res.json(mapPage(row, await listFields(req.params.id)));
+    } catch (err) {
+      next(err);
+    }
+  },
+);
 
 pagesRouter.get("/:id/share", async (req, res, next) => {
   try {

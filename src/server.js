@@ -11,7 +11,9 @@ import { pagesRouter } from "./routes/pages.js";
 import { publicRouter } from "./routes/public.js";
 import { reportsRouter } from "./routes/reports.js";
 import { requireAuth } from "./middleware/requireAuth.js";
+import { requireRole, Roles } from "./middleware/requireRole.js";
 import { registerStripeWebhook } from "./routes/webhooks.js";
+import { adminUsersRouter } from "./routes/adminUsers.js";
 
 const app = express();
 const port = Number(process.env.PORT || 4000);
@@ -28,7 +30,13 @@ app.get("/health", (_req, res) => {
 
 app.use("/auth", authRouter);
 app.use("/admin/pages", requireAuth, pagesRouter);
-app.use("/admin/reports", requireAuth, reportsRouter);
+app.use(
+  "/admin/reports",
+  requireAuth,
+  requireRole([Roles.VIEWER, Roles.EDITOR, Roles.OWNER]),
+  reportsRouter,
+);
+app.use("/admin/users", requireAuth, requireRole([Roles.OWNER]), adminUsersRouter);
 app.use("/public", publicRouter);
 
 app.use((err, _req, res, _next) => {
@@ -46,8 +54,8 @@ async function seedAdmin() {
 
   const hash = await bcrypt.hash(password, 10);
   await db.run(
-    "INSERT INTO admin_users (id, email, password_hash, created_at) VALUES (?, ?, ?, ?)",
-    [uuidv4(), email, hash, new Date().toISOString()],
+    "INSERT INTO admin_users (id, email, password_hash, role, created_at) VALUES (?, ?, ?, ?, ?)",
+    [uuidv4(), email, hash, "owner", new Date().toISOString()],
   );
   console.log(`Seeded admin user: ${email}`);
 }

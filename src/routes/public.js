@@ -73,8 +73,16 @@ const submitSchema = z.object({
   payerName: z.string().optional(),
   payerEmail: z.string().email(),
   paymentMethod: z.enum(["card", "wallet", "ach"]).default("card"),
+  achAuthorizationAccepted: z.boolean().optional(),
   fieldResponses: z.record(z.string(), z.union([z.string(), z.number(), z.boolean()])).default({}),
 });
+
+function inferMethodFromStripeIntent(intent) {
+  const pmTypes = intent.payment_method_types || [];
+  if (pmTypes.includes("us_bank_account")) return "ach";
+  if (pmTypes.some((type) => ["card", "link"].includes(type))) return "card";
+  return "wallet";
+}
 
 publicRouter.post("/pay/:slug/create-payment-intent", async (req, res, next) => {
   try {
@@ -93,6 +101,11 @@ publicRouter.post("/pay/:slug/create-payment-intent", async (req, res, next) => 
     const amount = resolveAmount(page, parsed.data.amount);
     if (amount == null || amount <= 0) {
       return res.status(400).json({ error: "Invalid amount for this payment page" });
+    }
+    if (parsed.data.paymentMethod === "ach" && !parsed.data.achAuthorizationAccepted) {
+      return res.status(400).json({
+        error: "ACH authorization must be accepted before submission",
+      });
     }
 
     for (const field of fields) {
@@ -189,11 +202,10 @@ publicRouter.post("/pay/:slug/confirm", async (req, res, next) => {
           ? "failed"
           : "pending";
 
-    await db.run("UPDATE transactions SET status = ?, processor_ref = ? WHERE id = ?", [
-      mappedStatus,
-      intent.id,
-      tx.id,
-    ]);
+    await db.run(
+      "UPDATE transactions SET status = ?, processor_ref = ?, payment_method = ? WHERE id = ?",
+      [mappedStatus, intent.id, inferMethodFromStripeIntent(intent), tx.id],
+    );
 
     if (mappedStatus === "success" && tx.payer_email) {
       const context = {
@@ -216,6 +228,7 @@ publicRouter.post("/pay/:slug/confirm", async (req, res, next) => {
       status: mappedStatus,
       paymentIntentId: intent.id,
       stripeStatus: intent.status,
+      paymentMethod: inferMethodFromStripeIntent(intent),
     });
   } catch (err) {
     next(err);

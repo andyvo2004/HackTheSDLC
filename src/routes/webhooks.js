@@ -9,6 +9,13 @@ function mapStripeStatusToTxStatus(stripeStatus) {
   return "pending";
 }
 
+function inferMethodFromStripeIntent(pi) {
+  const pmTypes = pi.payment_method_types || [];
+  if (pmTypes.includes("us_bank_account")) return "ach";
+  if (pmTypes.some((type) => ["card", "link"].includes(type))) return "card";
+  return "wallet";
+}
+
 export function registerStripeWebhook(app) {
   app.post("/webhooks/stripe", express.raw({ type: "application/json" }), async (req, res) => {
     const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
@@ -30,11 +37,10 @@ export function registerStripeWebhook(app) {
         );
 
         if (tx) {
-          await db.run("UPDATE transactions SET status = ?, processor_ref = ? WHERE id = ?", [
-            status,
-            pi.id,
-            tx.id,
-          ]);
+          await db.run(
+            "UPDATE transactions SET status = ?, processor_ref = ?, payment_method = ? WHERE id = ?",
+            [status, pi.id, inferMethodFromStripeIntent(pi), tx.id],
+          );
 
           if (status === "success" && tx.payer_email) {
             const context = {

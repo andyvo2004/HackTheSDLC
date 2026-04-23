@@ -4,39 +4,53 @@ import { db } from "../db.js";
 
 export const reportsRouter = Router();
 
+function buildTransactionFilter(query) {
+  const { from, to, pageId, status, paymentMethod } = query;
+  const where = [];
+  const params = [];
+
+  if (from) {
+    where.push("t.created_at >= ?");
+    params.push(String(from));
+  }
+  if (to) {
+    where.push("t.created_at <= ?");
+    params.push(String(to));
+  }
+  if (pageId) {
+    where.push("t.page_id = ?");
+    params.push(String(pageId));
+  }
+  if (status) {
+    where.push("t.status = ?");
+    params.push(String(status));
+  }
+  if (paymentMethod) {
+    where.push("t.payment_method = ?");
+    params.push(String(paymentMethod));
+  }
+
+  return {
+    whereClause: where.length ? `WHERE ${where.join(" AND ")}` : "",
+    params,
+  };
+}
+
+async function queryTransactions(query) {
+  const { whereClause, params } = buildTransactionFilter(query);
+  return db.all(
+    `SELECT t.*, p.title AS page_title, p.slug AS page_slug
+     FROM transactions t
+     JOIN payment_pages p ON p.id = t.page_id
+     ${whereClause}
+     ORDER BY t.created_at DESC`,
+    params,
+  );
+}
+
 reportsRouter.get("/transactions", async (req, res, next) => {
   try {
-    const { from, to, pageId, status } = req.query;
-    const where = [];
-    const params = [];
-
-    if (from) {
-      where.push("t.created_at >= ?");
-      params.push(String(from));
-    }
-    if (to) {
-      where.push("t.created_at <= ?");
-      params.push(String(to));
-    }
-    if (pageId) {
-      where.push("t.page_id = ?");
-      params.push(String(pageId));
-    }
-    if (status) {
-      where.push("t.status = ?");
-      params.push(String(status));
-    }
-
-    const whereClause = where.length ? `WHERE ${where.join(" AND ")}` : "";
-    const rows = await db.all(
-      `SELECT t.*, p.title AS page_title, p.slug AS page_slug
-       FROM transactions t
-       JOIN payment_pages p ON p.id = t.page_id
-       ${whereClause}
-       ORDER BY t.created_at DESC`,
-      params,
-    );
-
+    const rows = await queryTransactions(req.query);
     return res.json(
       rows.map((r) => ({
         id: r.id,
@@ -110,14 +124,19 @@ reportsRouter.get("/summary", async (req, res, next) => {
 
 reportsRouter.get("/transactions.csv", async (req, res, next) => {
   try {
-    const rows = await db.all(
-      `SELECT t.id, p.slug AS page_slug, t.amount, t.payment_method, t.status,
-              t.payer_name, t.payer_email, t.processor_ref, t.created_at
-       FROM transactions t
-       JOIN payment_pages p ON p.id = t.page_id
-       ORDER BY t.created_at DESC`,
-    );
-    const csv = stringify(rows, { header: true });
+    const rows = await queryTransactions(req.query);
+    const csvRows = rows.map((r) => ({
+      id: r.id,
+      page_slug: r.page_slug,
+      amount: r.amount,
+      payment_method: r.payment_method,
+      status: r.status,
+      payer_name: r.payer_name,
+      payer_email: r.payer_email,
+      processor_ref: r.processor_ref,
+      created_at: r.created_at,
+    }));
+    const csv = stringify(csvRows, { header: true });
     res.setHeader("Content-Type", "text/csv");
     res.setHeader("Content-Disposition", "attachment; filename=transactions.csv");
     return res.send(csv);

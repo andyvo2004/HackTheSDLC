@@ -7,6 +7,7 @@ Backend API for the Quick Payment Pages hackathon challenge.
 - Node.js + Express
 - SQLite (`sqlite3`)
 - JWT auth
+- Role-based authorization (`owner`, `editor`, `viewer`)
 
 ## Quick start
 
@@ -39,6 +40,8 @@ See `.env.example`.
 - `DB_PATH`: sqlite file path
 - `STRIPE_SECRET_KEY`: Stripe test secret key
 - `STRIPE_WEBHOOK_SECRET`: Stripe webhook signing secret
+- `EMAIL_FROM`: sender address for confirmations
+- `SMTP_HOST` / `SMTP_PORT` / `SMTP_SECURE` / `SMTP_USER` / `SMTP_PASS`: SMTP email config
 
 ## API overview
 
@@ -50,21 +53,25 @@ See `.env.example`.
 
 - `POST /auth/login`
   - Body: `{ "email": "...", "password": "..." }`
-  - Returns JWT token
+  - Returns JWT token + role
+- `GET /auth/me` (Bearer token required)
+  - Returns current authenticated admin profile
 
 ### Admin - Payment pages (Bearer token required)
 
 - `GET /admin/pages`
 - `GET /admin/pages/:id`
-- `POST /admin/pages`
-- `PUT /admin/pages/:id`
-- `PATCH /admin/pages/:id/status`
+- `POST /admin/pages` (editor/owner)
+- `PUT /admin/pages/:id` (editor/owner)
+- `PATCH /admin/pages/:id/status` (editor/owner)
 - `GET /admin/pages/:id/share` (public URL + iframe snippet + QR code data URL)
 
 ### Public payment endpoints
 
 - `GET /public/pay/:slug` (retrieve active page config)
 - `POST /public/pay/:slug/create-payment-intent` (creates Stripe PaymentIntent + pending transaction)
+  - Supports `paymentMethod` (`card`, `wallet`, `ach`)
+  - For `ach`, include `achAuthorizationAccepted: true`
 - `POST /public/pay/:slug/confirm` (syncs transaction status from Stripe intent)
 
 ### Webhooks
@@ -73,23 +80,41 @@ See `.env.example`.
 
 ### Admin reporting (Bearer token required)
 
-- `GET /admin/reports/transactions?from=&to=&pageId=&status=`
+- `GET /admin/reports/transactions?from=&to=&pageId=&status=&paymentMethod=`
 - `GET /admin/reports/summary`
-- `GET /admin/reports/transactions.csv`
+- `GET /admin/reports/transactions.csv?from=&to=&pageId=&status=&paymentMethod=`
+
+### Admin user management (owner only)
+
+- `GET /admin/users`
+- `POST /admin/users`
+- `PATCH /admin/users/:id/role`
+- `PATCH /admin/users/:id/password`
+
+## Role permission matrix
+
+- `viewer`
+  - Can: read page configs, read reports/exports
+  - Cannot: create/update/toggle pages, manage admin users
+- `editor`
+  - Can: everything `viewer` can, plus create/update/toggle pages
+  - Cannot: manage admin users
+- `owner`
+  - Full access, including admin user management and role assignment
 
 ## Current implementation status
 
 - Implemented:
   - Admin login with JWT
+  - Role-based permissions (owner/editor/viewer)
   - Payment page CRUD + active toggle
   - Branding/amount/custom fields/GL codes/email template persistence
   - Public payment page retrieval
   - Stripe test-mode PaymentIntent flow
   - Stripe webhook transaction status updates
   - Transaction storage + field responses
-  - Confirmation email stub
-  - Reporting summary + CSV export
+  - SMTP confirmation email support (with local stub fallback)
+  - Reporting summary + CSV export with active filters
 - Not yet implemented:
-  - Real email delivery provider
-  - Wallet/ACH-specific flows
-  - Role-based authorization beyond single admin role
+  - Full wallet/ACH client-side checkout UX and capability detection
+  - Fine-grained per-page/team permissions

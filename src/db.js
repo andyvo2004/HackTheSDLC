@@ -30,6 +30,7 @@ export async function initDb() {
       id TEXT PRIMARY KEY,
       email TEXT UNIQUE NOT NULL,
       password_hash TEXT NOT NULL,
+      role TEXT NOT NULL DEFAULT 'owner',
       created_at TEXT NOT NULL
     )
   `);
@@ -109,4 +110,11 @@ export async function initDb() {
   await db.run(
     "CREATE UNIQUE INDEX IF NOT EXISTS idx_transactions_stripe_intent_id ON transactions(stripe_payment_intent_id)",
   );
+
+  const adminColumns = await db.all("PRAGMA table_info(admin_users)");
+  const hasRoleColumn = adminColumns.some((c) => c.name === "role");
+  if (!hasRoleColumn) {
+    await db.run("ALTER TABLE admin_users ADD COLUMN role TEXT NOT NULL DEFAULT 'owner'");
+  }
+  await db.run("UPDATE admin_users SET role = 'owner' WHERE role IS NULL OR role = ''");
 }
