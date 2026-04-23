@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import QRCode from "qrcode";
+import { useI18n } from "../i18n.js";
 
 export function DistributionPanel({ pageSlug, pageTitle }) {
+  const { t } = useI18n();
   const url = `${window.location.origin}/pay/${pageSlug}`;
-  const iframeCode = `<iframe src="${url}" width="100%" height="650" frameborder="0" title="${pageTitle} Payment Page" allow="payment"></iframe>`;
+  const iframeCode = `<iframe src="${url}" width="100%" height="650" frameborder="0" title="${pageTitle} ${t("paymentPage")}" allow="payment"></iframe>`;
 
   const [linkCopied, setLinkCopied] = useState(false);
   const [codeCopied, setCodeCopied] = useState(false);
@@ -21,7 +23,7 @@ export function DistributionPanel({ pageSlug, pageTitle }) {
   const copyLink = async () => {
     await navigator.clipboard.writeText(url);
     setLinkCopied(true);
-    if (liveRef.current) liveRef.current.textContent = "Link copied to clipboard";
+    if (liveRef.current) liveRef.current.textContent = t("linkCopiedToClipboard");
     setTimeout(() => {
       setLinkCopied(false);
       if (liveRef.current) liveRef.current.textContent = "";
@@ -64,45 +66,45 @@ export function DistributionPanel({ pageSlug, pageTitle }) {
       <span ref={liveRef} aria-live="polite" className="sr-only" />
 
       <div className="dist-card">
-        <h4 className="dist-card-title">Direct URL</h4>
+        <h4 className="dist-card-title">{t("directUrl")}</h4>
         <input
           className="dist-url-input"
           readOnly
           value={url}
-          aria-label="Payment page direct URL"
+          aria-label={t("directUrl")}
           onClick={(e) => e.target.select()}
         />
         <button
           className="dist-btn"
           onClick={copyLink}
-          aria-label="Copy payment page link"
+          aria-label={t("copyLink")}
         >
-          {linkCopied ? "Copied! ✓" : "Copy Link"}
+          {linkCopied ? t("copied") : t("copyLink")}
         </button>
       </div>
 
       <div className="dist-card">
-        <h4 className="dist-card-title">Embed Code</h4>
+        <h4 className="dist-card-title">{t("embedCode")}</h4>
         <textarea
           className="dist-embed-code"
           readOnly
           rows={4}
           value={iframeCode}
-          aria-label="Payment page embed code"
+          aria-label={t("embedCode")}
           onClick={(e) => e.target.select()}
         />
         <button
           className="dist-btn"
           onClick={copyCode}
-          aria-label="Copy embed code"
+          aria-label={t("copyCode")}
         >
-          {codeCopied ? "Copied! ✓" : "Copy Code"}
+          {codeCopied ? t("copied") : t("copyCode")}
         </button>
-        <p className="dist-helper">Paste into any webpage to embed the payment form.</p>
+        <p className="dist-helper">{t("pasteEmbedHint")}</p>
       </div>
 
       <div className="dist-card">
-        <h4 className="dist-card-title">QR Code</h4>
+        <h4 className="dist-card-title">{t("qrCode")}</h4>
         <div
           role="img"
           aria-label={`QR code for ${pageTitle} payment page`}
@@ -111,8 +113,8 @@ export function DistributionPanel({ pageSlug, pageTitle }) {
           <canvas ref={canvasRef} />
         </div>
         <div className="dist-qr-btns">
-          <button className="dist-btn" onClick={downloadPNG}>Download PNG</button>
-          <button className="dist-btn" onClick={downloadSVG}>Download SVG</button>
+          <button className="dist-btn" onClick={downloadPNG}>{t("downloadPng")}</button>
+          <button className="dist-btn" onClick={downloadSVG}>{t("downloadSvg")}</button>
         </div>
       </div>
     </div>
