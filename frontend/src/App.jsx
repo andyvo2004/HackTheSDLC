@@ -710,10 +710,16 @@ function AdminApp() {
     password: "admin12345",
   });
 
+  const getLocalizedPageDefaults = () => ({
+    subtitle: t("secureSelfServiceExperience"),
+    headerMessage: t("thankYouChoosingOrg"),
+    footerMessage: t("needHelpBillingSupport"),
+  });
+
   const [pageForm, setPageForm] = useState({
     slug: "",
     title: "",
-    subtitle: t("secureSelfServiceExperience"),
+    subtitle: getLocalizedPageDefaults().subtitle,
     description: "",
     logoUrl: "",
     amountMode: "fixed",
@@ -722,8 +728,8 @@ function AdminApp() {
     maxAmount: 0,
     glCodes: "GL-100",
     brandColor: "#0f63ff",
-    headerMessage: t("thankYouChoosingOrg"),
-    footerMessage: t("needHelpBillingSupport"),
+    headerMessage: getLocalizedPageDefaults().headerMessage,
+    footerMessage: getLocalizedPageDefaults().footerMessage,
   });
 
   const [customFieldsBuilder, setCustomFieldsBuilder] = useState([]);
@@ -758,6 +764,40 @@ function AdminApp() {
     document.documentElement.setAttribute("data-theme", theme);
     localStorage.setItem("qpp_theme", theme);
   }, [theme]);
+
+  useEffect(() => {
+    const localizedDefaults = getLocalizedPageDefaults();
+    const englishDefaults = {
+      subtitle: "Secure, self-service payment experience",
+      headerMessage: "Thank you for choosing our organization",
+      footerMessage: "Need help? Reach our billing support team.",
+    };
+    setPageForm((prev) => {
+      const next = { ...prev };
+      if (
+        !prev.subtitle ||
+        prev.subtitle === englishDefaults.subtitle ||
+        prev.subtitle === t("secureSelfServiceExperience")
+      ) {
+        next.subtitle = localizedDefaults.subtitle;
+      }
+      if (
+        !prev.headerMessage ||
+        prev.headerMessage === englishDefaults.headerMessage ||
+        prev.headerMessage === t("thankYouChoosingOrg")
+      ) {
+        next.headerMessage = localizedDefaults.headerMessage;
+      }
+      if (
+        !prev.footerMessage ||
+        prev.footerMessage === englishDefaults.footerMessage ||
+        prev.footerMessage === t("needHelpBillingSupport")
+      ) {
+        next.footerMessage = localizedDefaults.footerMessage;
+      }
+      return next;
+    });
+  }, [lang, t]);
 
   useEffect(() => {
     return () => {

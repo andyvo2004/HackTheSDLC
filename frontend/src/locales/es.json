@@ -148,5 +148,21 @@
   "statusValue_pending": "Pendiente",
   "statusValue_processing": "Procesando",
   "statusValue_canceled": "Cancelado",
-  "statusValue_requires_action": "Requiere accion"
+  "statusValue_requires_action": "Requiere accion",
+  "customFields": "Campos personalizados ({count}/10)",
+  "addField": "Agregar campo",
+  "createPage": "Crear pagina",
+  "saveAsDraftFirstPage": "Guardar como borrador (primera pagina)",
+  "yourPageTitle": "Titulo de tu pagina",
+  "paymentAmount": "Monto del pago",
+  "viewToCheckout": "Vista a checkout",
+  "checkoutToSuccess": "Checkout a exito",
+  "page": "Pagina",
+  "views": "Vistas",
+  "success": "Exito",
+  "revenue": "Ingresos",
+  "title": "Titulo",
+  "slug": "Slug",
+  "actions": "Acciones",
+  "amountMode": "Modo de monto"
 }
