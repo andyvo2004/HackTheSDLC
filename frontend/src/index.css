@@ -3,16 +3,16 @@
 }
 
 :root {
-  --ws-navy-900: #031b3b;
-  --ws-navy-700: #07336d;
-  --ws-blue-500: #0f63ff;
-  --ws-blue-400: #2f88ff;
-  --ws-cyan-300: #75d7ff;
-  --surface: #f4f8ff;
-  --surface-strong: #ffffff;
-  --text-primary: #0c1f3e;
-  --text-secondary: #4d5f7a;
-  --border: #d8e6ff;
+  --ws-navy-900: #081329;
+  --ws-navy-700: #0f2147;
+  --ws-blue-500: #635bff;
+  --ws-blue-400: #18bfff;
+  --ws-cyan-300: #73dcff;
+  --surface: #0e1732;
+  --surface-strong: #121f3f;
+  --text-primary: #e8efff;
+  --text-secondary: #a8b6d6;
+  --border: #2a3c69;
 }
 
 body {
@@ -25,6 +25,23 @@ body {
     "Segoe UI",
     sans-serif;
   color: var(--text-primary);
+  background:
+    radial-gradient(circle at top right, rgba(24, 191, 255, 0.18), transparent 42%),
+    radial-gradient(circle at 20% 20%, rgba(99, 91, 255, 0.2), transparent 36%),
+    linear-gradient(145deg, #0a1228 0%, #0c1630 100%);
+}
+
+body.light-mode {
+  --ws-navy-900: #031b3b;
+  --ws-navy-700: #07336d;
+  --ws-blue-500: #0f63ff;
+  --ws-blue-400: #2f88ff;
+  --ws-cyan-300: #75d7ff;
+  --surface: #f4f8ff;
+  --surface-strong: #ffffff;
+  --text-primary: #0c1f3e;
+  --text-secondary: #4d5f7a;
+  --border: #d8e6ff;
   background:
     radial-gradient(circle at top right, rgba(117, 215, 255, 0.34), transparent 40%),
     radial-gradient(circle at 20% 20%, rgba(47, 136, 255, 0.24), transparent 30%),
@@ -1176,4 +1193,72 @@ textarea {
   font-size: 0.875rem;
   text-align: center;
   padding: 20px 0;
+}
+
+/* Global theme alignment with homepage */
+body.dark-mode .auth-card,
+body.dark-mode .public-card,
+body.dark-mode .stat-card,
+body.dark-mode .panel,
+body.dark-mode .result-card {
+  background: linear-gradient(160deg, rgba(18, 31, 63, 0.96), rgba(14, 24, 50, 0.98));
+  border-color: #2a3c69;
+  box-shadow: 0 14px 34px rgba(2, 7, 21, 0.42);
+}
+
+body.dark-mode .content-shell {
+  background: linear-gradient(180deg, rgba(10, 19, 40, 0.66), rgba(8, 14, 32, 0.22));
+}
+
+body.dark-mode .auth-google-btn,
+body.dark-mode .stripe-box,
+body.dark-mode input,
+body.dark-mode select {
+  background: #111d3b;
+  border-color: #314876;
+  color: #dce7ff;
+}
+
+body.dark-mode .auth-google-btn:hover {
+  background: #17284e;
+  border-color: #4660a0;
+}
+
+body.dark-mode .subtle,
+body.dark-mode .status-text,
+body.dark-mode .public-footer,
+body.dark-mode .required-note,
+body.dark-mode .card-label,
+body.dark-mode .feed-status,
+body.dark-mode .feed-time,
+body.dark-mode .feed-empty,
+body.dark-mode .feed-page {
+  color: #a8b6d6;
+}
+
+body.dark-mode .table-wrap table,
+body.dark-mode table {
+  color: #dce7ff;
+}
+
+body.dark-mode th,
+body.dark-mode td {
+  border-color: #2a3c69;
+}
+
+body.dark-mode .feed-item {
+  background: #162446;
+  border-left-color: #7b74ff;
+}
+
+body.dark-mode .error,
+body.dark-mode .field-error {
+  color: #ff8e95;
+}
+
+body.light-mode .theme-toggle {
+  border-color: rgba(125, 149, 200, 0.42);
+  background: rgba(248, 251, 255, 0.9);
+  color: #243767;
+  box-shadow: 0 12px 30px rgba(72, 92, 140, 0.2);
 }

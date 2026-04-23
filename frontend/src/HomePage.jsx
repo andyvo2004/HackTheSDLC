@@ -122,7 +122,7 @@ export default function HomePage() {
           <SmartNavLink to="/login" className="btn btn-outline">
             Login
           </SmartNavLink>
-          <SmartNavLink to="/dashboard" className="btn btn-filled">
+          <SmartNavLink to="/signup" className="btn btn-filled">
             Get Started
           </SmartNavLink>
         </nav>
@@ -145,7 +145,7 @@ export default function HomePage() {
             </p>
             <div className="hero-ctas">
               <SmartNavLink
-                to="/dashboard"
+                to="/signup"
                 className="btn btn-filled btn-large"
               >
                 Get Started
@@ -158,19 +158,28 @@ export default function HomePage() {
                 See How It Works
               </a>
             </div>
-            <div className="hero-logo-marquee" aria-label="Trusted by modern teams">
+            <div
+              className="hero-logo-marquee"
+              aria-label="Trusted by modern teams"
+            >
               <p>Trusted by teams like</p>
               <div className="logo-track-mask">
                 <motion.div
                   className="logo-track"
                   animate={{ x: ["0%", "-50%"] }}
-                  transition={{ duration: 24, ease: "linear", repeat: Infinity }}
+                  transition={{
+                    duration: 24,
+                    ease: "linear",
+                    repeat: Infinity,
+                  }}
                 >
-                  {[...logoPlaceholders, ...logoPlaceholders].map((name, index) => (
-                    <div key={`${name}-${index}`} className="logo-pill">
-                      {name}
-                    </div>
-                  ))}
+                  {[...logoPlaceholders, ...logoPlaceholders].map(
+                    (name, index) => (
+                      <div key={`${name}-${index}`} className="logo-pill">
+                        {name}
+                      </div>
+                    ),
+                  )}
                 </motion.div>
               </div>
             </div>
@@ -297,7 +306,7 @@ export default function HomePage() {
             Go from setup to collection in minutes with a premium checkout
             experience built for modern business teams.
           </p>
-          <SmartNavLink to="/dashboard" className="btn btn-filled btn-large">
+          <SmartNavLink to="/signup" className="btn btn-filled btn-large">
             Get Started
           </SmartNavLink>
         </motion.section>
@@ -317,7 +326,9 @@ export default function HomePage() {
         type="button"
         className="theme-toggle"
         onClick={() => setIsLightMode((prev) => !prev)}
-        aria-label={isLightMode ? "Switch to dark mode" : "Switch to light mode"}
+        aria-label={
+          isLightMode ? "Switch to dark mode" : "Switch to light mode"
+        }
         title={isLightMode ? "Switch to dark mode" : "Switch to light mode"}
       >
         {isLightMode ? <Moon size={18} /> : <Sun size={18} />}

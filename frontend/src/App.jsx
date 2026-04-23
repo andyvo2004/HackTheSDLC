@@ -1,6 +1,21 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { BrowserRouter, Link, Navigate, Route, Routes, useNavigate, useParams } from "react-router-dom";
-import { CardElement, Elements, useElements, useStripe } from "@stripe/react-stripe-js";
+import {
+  BrowserRouter,
+  Link,
+  Navigate,
+  Route,
+  Routes,
+  useLocation,
+  useNavigate,
+  useParams,
+} from "react-router-dom";
+import { AnimatePresence, motion } from "framer-motion";
+import {
+  CardElement,
+  Elements,
+  useElements,
+  useStripe,
+} from "@stripe/react-stripe-js";
 import { loadStripe } from "@stripe/stripe-js";
 import { DistributionPanel } from "./components/DistributionPanel.jsx";
 import { getContrastColor } from "./utils/color.js";
@@ -50,7 +65,12 @@ function MiniAreaChart({ values }) {
     })
     .join(" ");
   return (
-    <svg className="mini-area-chart" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+    <svg
+      className="mini-area-chart"
+      viewBox="0 0 100 100"
+      preserveAspectRatio="none"
+      aria-hidden="true"
+    >
       <defs>
         <linearGradient id="lineFade" x1="0" x2="0" y1="0" y2="1">
           <stop offset="0%" stopColor="rgba(15,99,255,0.35)" />
@@ -132,9 +152,13 @@ function PaymentResultView({ result, onRetry }) {
       <div className="result-icon" aria-hidden="true">
         {success ? "✓" : "!"}
       </div>
-      <h2 ref={headingRef} tabIndex={-1}>{success ? "Payment successful" : "Payment not completed"}</h2>
+      <h2 ref={headingRef} tabIndex={-1}>
+        {success ? "Payment successful" : "Payment not completed"}
+      </h2>
       <p>{result.message}</p>
-      {result.transactionId && <small>Transaction ID: {result.transactionId}</small>}
+      {result.transactionId && (
+        <small>Transaction ID: {result.transactionId}</small>
+      )}
       {!success && (
         <button type="button" onClick={onRetry}>
           Try again
@@ -151,7 +175,8 @@ function PublicCheckoutForm({ slug, config, onResult }) {
   const [payerEmail, setPayerEmail] = useState("");
   const [payerName, setPayerName] = useState("");
   const [customResponses, setCustomResponses] = useState({});
-  const [achAuthorizationAccepted, setAchAuthorizationAccepted] = useState(false);
+  const [achAuthorizationAccepted, setAchAuthorizationAccepted] =
+    useState(false);
   const [fieldErrors, setFieldErrors] = useState({});
   const [stripeError, setStripeError] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -169,7 +194,10 @@ function PublicCheckoutForm({ slug, config, onResult }) {
         errors.amount = `Amount must be at most $${Number(config.maxAmount || 0).toFixed(2)}.`;
       }
     }
-    if (config.amountMode === "user_entered" && (!amount || Number(amount) <= 0)) {
+    if (
+      config.amountMode === "user_entered" &&
+      (!amount || Number(amount) <= 0)
+    ) {
       errors.amount = "Please enter a valid amount.";
     }
     config.customFields?.forEach((field) => {
@@ -186,7 +214,10 @@ function PublicCheckoutForm({ slug, config, onResult }) {
     if (Object.keys(errors).length > 0) {
       setFieldErrors(errors);
       const firstKey = Object.keys(errors)[0];
-      setTimeout(() => document.getElementById(`field-${firstKey}`)?.focus(), 50);
+      setTimeout(
+        () => document.getElementById(`field-${firstKey}`)?.focus(),
+        50,
+      );
       return;
     }
     setFieldErrors({});
@@ -194,25 +225,31 @@ function PublicCheckoutForm({ slug, config, onResult }) {
     setSubmitting(true);
     setStripeError("");
     try {
-      const payload = await apiRequest(`/public/pay/${slug}/create-payment-intent`, {
-        method: "POST",
-        body: {
-          amount: Number(amount),
-          payerEmail,
-          payerName,
-          paymentMethod: "card",
-          fieldResponses: customResponses,
-          achAuthorizationAccepted,
+      const payload = await apiRequest(
+        `/public/pay/${slug}/create-payment-intent`,
+        {
+          method: "POST",
+          body: {
+            amount: Number(amount),
+            payerEmail,
+            payerName,
+            paymentMethod: "card",
+            fieldResponses: customResponses,
+            achAuthorizationAccepted,
+          },
         },
-      });
+      );
 
       const cardElement = elements.getElement(CardElement);
-      const confirmResult = await stripe.confirmCardPayment(payload.clientSecret, {
-        payment_method: {
-          card: cardElement,
-          billing_details: { email: payerEmail, name: payerName },
+      const confirmResult = await stripe.confirmCardPayment(
+        payload.clientSecret,
+        {
+          payment_method: {
+            card: cardElement,
+            billing_details: { email: payerEmail, name: payerName },
+          },
         },
-      });
+      );
       if (confirmResult.error) {
         const msg = confirmResult.error.message || "Stripe confirmation failed";
         setStripeError(msg);
@@ -227,10 +264,20 @@ function PublicCheckoutForm({ slug, config, onResult }) {
 
       if (sync.status === "success") {
         const msg = "Payment successful. Confirmation has been sent.";
-        onResult({ type: "success", message: msg, transactionId: sync.transactionId, payerEmail, amount });
+        onResult({
+          type: "success",
+          message: msg,
+          transactionId: sync.transactionId,
+          payerEmail,
+          amount,
+        });
       } else {
         const msg = `Payment status: ${sync.status}. Please check transaction details.`;
-        onResult({ type: "failure", message: msg, transactionId: sync.transactionId });
+        onResult({
+          type: "failure",
+          message: msg,
+          transactionId: sync.transactionId,
+        });
       }
     } catch (err) {
       if (!stripeError) {
@@ -245,7 +292,12 @@ function PublicCheckoutForm({ slug, config, onResult }) {
   };
 
   return (
-    <form className="public-form" onSubmit={submit} noValidate aria-label="Payment form">
+    <form
+      className="public-form"
+      onSubmit={submit}
+      noValidate
+      aria-label="Payment form"
+    >
       <p className="required-note">* Required fields</p>
       <fieldset className="form-fieldset">
         <legend>Your Information</legend>
@@ -257,10 +309,14 @@ function PublicCheckoutForm({ slug, config, onResult }) {
             onChange={(e) => setPayerName(e.target.value)}
             aria-required="true"
             aria-invalid={!!fieldErrors.payerName}
-            aria-describedby={fieldErrors.payerName ? "err-payerName" : undefined}
+            aria-describedby={
+              fieldErrors.payerName ? "err-payerName" : undefined
+            }
           />
           {fieldErrors.payerName && (
-            <p id="err-payerName" className="field-error" tabIndex={-1}>{fieldErrors.payerName}</p>
+            <p id="err-payerName" className="field-error" tabIndex={-1}>
+              {fieldErrors.payerName}
+            </p>
           )}
         </div>
         <div className="field-group">
@@ -272,10 +328,14 @@ function PublicCheckoutForm({ slug, config, onResult }) {
             onChange={(e) => setPayerEmail(e.target.value)}
             aria-required="true"
             aria-invalid={!!fieldErrors.payerEmail}
-            aria-describedby={fieldErrors.payerEmail ? "err-payerEmail" : undefined}
+            aria-describedby={
+              fieldErrors.payerEmail ? "err-payerEmail" : undefined
+            }
           />
           {fieldErrors.payerEmail && (
-            <p id="err-payerEmail" className="field-error" tabIndex={-1}>{fieldErrors.payerEmail}</p>
+            <p id="err-payerEmail" className="field-error" tabIndex={-1}>
+              {fieldErrors.payerEmail}
+            </p>
           )}
         </div>
       </fieldset>
@@ -283,7 +343,9 @@ function PublicCheckoutForm({ slug, config, onResult }) {
       {config.amountMode === "fixed" && (
         <div className="amount-display">
           <span className="amount-label">Amount</span>
-          <span className="amount-value">${Number(config.fixedAmount || 0).toFixed(2)}</span>
+          <span className="amount-value">
+            ${Number(config.fixedAmount || 0).toFixed(2)}
+          </span>
         </div>
       )}
       {config.amountMode === "range" && (
@@ -304,7 +366,9 @@ function PublicCheckoutForm({ slug, config, onResult }) {
             aria-describedby={fieldErrors.amount ? "err-amount" : undefined}
           />
           {fieldErrors.amount && (
-            <p id="err-amount" className="field-error" tabIndex={-1}>{fieldErrors.amount}</p>
+            <p id="err-amount" className="field-error" tabIndex={-1}>
+              {fieldErrors.amount}
+            </p>
           )}
         </div>
       )}
@@ -323,7 +387,9 @@ function PublicCheckoutForm({ slug, config, onResult }) {
             aria-describedby={fieldErrors.amount ? "err-amount" : undefined}
           />
           {fieldErrors.amount && (
-            <p id="err-amount" className="field-error" tabIndex={-1}>{fieldErrors.amount}</p>
+            <p id="err-amount" className="field-error" tabIndex={-1}>
+              {fieldErrors.amount}
+            </p>
           )}
         </div>
       )}
@@ -332,50 +398,94 @@ function PublicCheckoutForm({ slug, config, onResult }) {
         <fieldset className="form-fieldset">
           <legend>Additional Details</legend>
           {config.customFields.map((field) => (
-            <div key={field.id} className={field.type === "checkbox" ? "checkbox-group" : "field-group"}>
+            <div
+              key={field.id}
+              className={
+                field.type === "checkbox" ? "checkbox-group" : "field-group"
+              }
+            >
               {field.type === "checkbox" ? (
                 <>
                   <input
                     id={`field-${field.id}`}
                     type="checkbox"
                     checked={Boolean(customResponses[field.id])}
-                    onChange={(e) => setCustomResponses((p) => ({ ...p, [field.id]: e.target.checked }))}
+                    onChange={(e) =>
+                      setCustomResponses((p) => ({
+                        ...p,
+                        [field.id]: e.target.checked,
+                      }))
+                    }
                     aria-required={field.required}
                     aria-invalid={!!fieldErrors[field.id]}
-                    aria-describedby={fieldErrors[field.id] ? `err-${field.id}` : undefined}
+                    aria-describedby={
+                      fieldErrors[field.id] ? `err-${field.id}` : undefined
+                    }
                   />
-                  <label htmlFor={`field-${field.id}`}>{field.label}{field.required ? " *" : ""}</label>
+                  <label htmlFor={`field-${field.id}`}>
+                    {field.label}
+                    {field.required ? " *" : ""}
+                  </label>
                 </>
               ) : (
                 <>
-                  <label htmlFor={`field-${field.id}`}>{field.label}{field.required ? " *" : ""}</label>
+                  <label htmlFor={`field-${field.id}`}>
+                    {field.label}
+                    {field.required ? " *" : ""}
+                  </label>
                   {field.type === "dropdown" ? (
                     <select
                       id={`field-${field.id}`}
                       value={customResponses[field.id] || ""}
-                      onChange={(e) => setCustomResponses((p) => ({ ...p, [field.id]: e.target.value }))}
+                      onChange={(e) =>
+                        setCustomResponses((p) => ({
+                          ...p,
+                          [field.id]: e.target.value,
+                        }))
+                      }
                       aria-required={field.required}
                       aria-invalid={!!fieldErrors[field.id]}
-                      aria-describedby={fieldErrors[field.id] ? `err-${field.id}` : undefined}
+                      aria-describedby={
+                        fieldErrors[field.id] ? `err-${field.id}` : undefined
+                      }
                     >
                       <option value="">Select an option</option>
-                      {(field.options || []).map((opt) => <option key={opt} value={opt}>{opt}</option>)}
+                      {(field.options || []).map((opt) => (
+                        <option key={opt} value={opt}>
+                          {opt}
+                        </option>
+                      ))}
                     </select>
                   ) : (
                     <input
                       id={`field-${field.id}`}
-                      type={field.type === "date" ? "date" : field.type === "number" ? "number" : "text"}
+                      type={
+                        field.type === "date"
+                          ? "date"
+                          : field.type === "number"
+                            ? "number"
+                            : "text"
+                      }
                       value={customResponses[field.id] || ""}
-                      onChange={(e) => setCustomResponses((p) => ({ ...p, [field.id]: e.target.value }))}
+                      onChange={(e) =>
+                        setCustomResponses((p) => ({
+                          ...p,
+                          [field.id]: e.target.value,
+                        }))
+                      }
                       aria-required={field.required}
                       aria-invalid={!!fieldErrors[field.id]}
-                      aria-describedby={fieldErrors[field.id] ? `err-${field.id}` : undefined}
+                      aria-describedby={
+                        fieldErrors[field.id] ? `err-${field.id}` : undefined
+                      }
                     />
                   )}
                 </>
               )}
               {fieldErrors[field.id] && (
-                <p id={`err-${field.id}`} className="field-error" tabIndex={-1}>{fieldErrors[field.id]}</p>
+                <p id={`err-${field.id}`} className="field-error" tabIndex={-1}>
+                  {fieldErrors[field.id]}
+                </p>
               )}
             </div>
           ))}
@@ -391,9 +501,13 @@ function PublicCheckoutForm({ slug, config, onResult }) {
             checked={achAuthorizationAccepted}
             onChange={(e) => setAchAuthorizationAccepted(e.target.checked)}
           />
-          <label htmlFor="ach-auth">I authorize bank transfer payment processing if ACH is selected.</label>
+          <label htmlFor="ach-auth">
+            I authorize bank transfer payment processing if ACH is selected.
+          </label>
         </div>
-        <p id="card-element-label" className="card-label">Card Details *</p>
+        <p id="card-element-label" className="card-label">
+          Card Details *
+        </p>
         <div className="stripe-box" aria-labelledby="card-element-label">
           <CardElement options={{ hidePostalCode: false }} />
         </div>
@@ -410,7 +524,11 @@ function PublicCheckoutForm({ slug, config, onResult }) {
         )}
       </fieldset>
 
-      <button type="submit" className="pay-btn" disabled={submitting || !stripe || !elements}>
+      <button
+        type="submit"
+        className="pay-btn"
+        disabled={submitting || !stripe || !elements}
+      >
         {submitting ? "Processing..." : "Complete payment"}
       </button>
     </form>
@@ -450,7 +568,10 @@ function PublicPaymentPage() {
   if (error || !config) {
     return (
       <main className="public-shell">
-        <EmptyState title="Payment page unavailable" message={error || "Please verify this URL and try again."} />
+        <EmptyState
+          title="Payment page unavailable"
+          message={error || "Please verify this URL and try again."}
+        />
       </main>
     );
   }
@@ -460,40 +581,82 @@ function PublicPaymentPage() {
   return (
     <main className="public-shell">
       <section className="public-card">
-        <header className="public-header" style={{ background: config.brandColor || "#0f63ff", color: headerTextColor }}>
+        <header
+          className="public-header"
+          style={{
+            background: config.brandColor || "#0f63ff",
+            color: headerTextColor,
+          }}
+        >
           {config.logoUrl && (
             <img
               src={config.logoUrl}
               alt={`${config.title} logo`}
               className="public-logo"
-              onError={(e) => { e.target.style.display = "none"; }}
+              onError={(e) => {
+                e.target.style.display = "none";
+              }}
             />
           )}
           <h1>{config.title}</h1>
-          {config.subtitle && <p className="public-subtitle">{config.subtitle}</p>}
+          {config.subtitle && (
+            <p className="public-subtitle">{config.subtitle}</p>
+          )}
         </header>
         <div className="public-body">
           {config.description && <p className="subtle">{config.description}</p>}
-          <div className="preview-banner">{config.headerMessage || "Complete secure payment below."}</div>
+          <div className="preview-banner">
+            {config.headerMessage || "Complete secure payment below."}
+          </div>
           {result ? (
-            <PaymentResultView result={result} onRetry={() => setResult(null)} />
+            <PaymentResultView
+              result={result}
+              onRetry={() => setResult(null)}
+            />
           ) : STRIPE_KEY && stripePromise ? (
             <>
-              <div className="wallet-bar" role="group" aria-label="Express checkout options">
-                <button type="button" className="wallet-btn" disabled title="Apple Pay not available in this environment">Apple Pay</button>
-                <button type="button" className="wallet-btn" disabled title="Google Pay not available in this environment">G Pay</button>
+              <div
+                className="wallet-bar"
+                role="group"
+                aria-label="Express checkout options"
+              >
+                <button
+                  type="button"
+                  className="wallet-btn"
+                  disabled
+                  title="Apple Pay not available in this environment"
+                >
+                  Apple Pay
+                </button>
+                <button
+                  type="button"
+                  className="wallet-btn"
+                  disabled
+                  title="Google Pay not available in this environment"
+                >
+                  G Pay
+                </button>
               </div>
-              <div className="wallet-divider" aria-hidden="true"><span>or pay with card</span></div>
+              <div className="wallet-divider" aria-hidden="true">
+                <span>or pay with card</span>
+              </div>
               <Elements stripe={stripePromise}>
-                <PublicCheckoutForm slug={slug} config={config} onResult={setResult} />
+                <PublicCheckoutForm
+                  slug={slug}
+                  config={config}
+                  onResult={setResult}
+                />
               </Elements>
             </>
           ) : (
             <p className="error">
-              Missing Stripe publishable key. Set `VITE_STRIPE_PUBLISHABLE_KEY` in your frontend environment.
+              Missing Stripe publishable key. Set `VITE_STRIPE_PUBLISHABLE_KEY`
+              in your frontend environment.
             </p>
           )}
-          {config.footerMessage && <footer className="public-footer">{config.footerMessage}</footer>}
+          {config.footerMessage && (
+            <footer className="public-footer">{config.footerMessage}</footer>
+          )}
         </div>
       </section>
     </main>
@@ -507,7 +670,8 @@ function AuthPage({ mode }) {
   const [error, setError] = useState("");
   const [authNotice, setAuthNotice] = useState("");
   const [signupRole, setSignupRole] = useState("");
-  const [needsGoogleRoleCompletion, setNeedsGoogleRoleCompletion] = useState(false);
+  const [needsGoogleRoleCompletion, setNeedsGoogleRoleCompletion] =
+    useState(false);
   const [loginForm, setLoginForm] = useState({
     email: "",
     password: "",
@@ -516,7 +680,7 @@ function AuthPage({ mode }) {
   const isSignup = mode === "signup";
 
   if (existingToken) {
-    return <Navigate to="/" replace />;
+    return <Navigate to="/dashboard" replace />;
   }
 
   const exchangeSupabaseSession = async (selectedRole = "") => {
@@ -532,7 +696,7 @@ function AuthPage({ mode }) {
       },
     });
     localStorage.setItem("qpp_token", exchange.token);
-    navigate("/", { replace: true });
+    navigate("/dashboard", { replace: true });
     return true;
   };
 
@@ -554,7 +718,7 @@ function AuthPage({ mode }) {
         body: loginForm,
       });
       localStorage.setItem("qpp_token", data.token);
-      navigate("/", { replace: true });
+      navigate("/dashboard", { replace: true });
     } catch (err) {
       setError(err.message);
     } finally {
@@ -579,7 +743,9 @@ function AuthPage({ mode }) {
           role: signupRole,
         },
       });
-      setAuthNotice("Account created. Check your email to confirm, then sign in.");
+      setAuthNotice(
+        "Account created. Check your email to confirm, then sign in.",
+      );
     } catch (err) {
       setError(err.message);
     } finally {
@@ -615,7 +781,9 @@ function AuthPage({ mode }) {
       }
       const exchanged = await exchangeSupabaseSession(signupRole);
       if (!exchanged) {
-        throw new Error("Google session not found. Please click Continue with Google first.");
+        throw new Error(
+          "Google session not found. Please click Continue with Google first.",
+        );
       }
       setNeedsGoogleRoleCompletion(false);
     } catch (err) {
@@ -636,7 +804,9 @@ function AuthPage({ mode }) {
         if (cancelled) return;
         if (err.code === "ROLE_REQUIRED") {
           setNeedsGoogleRoleCompletion(true);
-          setAuthNotice("Google account found. Select account type to finish setup.");
+          setAuthNotice(
+            "Google account found. Select account type to finish setup.",
+          );
           if (!isSignup) navigate("/signup", { replace: true });
           return;
         }
@@ -661,14 +831,20 @@ function AuthPage({ mode }) {
             ? "Choose your account type, then confirm your email to continue."
             : "Sign in to manage branded payment pages and reporting."}
         </p>
-        <form className="form-grid" onSubmit={isSignup ? handleSignup : handleLogin} aria-label={isSignup ? "Admin sign up" : "Admin sign in"}>
+        <form
+          className="form-grid"
+          onSubmit={isSignup ? handleSignup : handleLogin}
+          aria-label={isSignup ? "Admin sign up" : "Admin sign in"}
+        >
           <div className="field-group">
             <label htmlFor="login-email">Email address</label>
             <input
               id="login-email"
               type="email"
               value={loginForm.email}
-              onChange={(e) => setLoginForm((p) => ({ ...p, email: e.target.value }))}
+              onChange={(e) =>
+                setLoginForm((p) => ({ ...p, email: e.target.value }))
+              }
               required
               aria-required="true"
             />
@@ -679,7 +855,9 @@ function AuthPage({ mode }) {
               id="login-password"
               type="password"
               value={loginForm.password}
-              onChange={(e) => setLoginForm((p) => ({ ...p, password: e.target.value }))}
+              onChange={(e) =>
+                setLoginForm((p) => ({ ...p, password: e.target.value }))
+              }
               required
               aria-required="true"
             />
@@ -702,27 +880,52 @@ function AuthPage({ mode }) {
             </div>
           )}
           <button type="submit" className="auth-submit-btn" disabled={loading}>
-            {loading ? (isSignup ? "Creating account..." : "Signing in...") : (isSignup ? "Create account" : "Sign in")}
+            {loading
+              ? isSignup
+                ? "Creating account..."
+                : "Signing in..."
+              : isSignup
+                ? "Create account"
+                : "Sign in"}
           </button>
         </form>
         {needsGoogleRoleCompletion ? (
-          <button type="button" className="auth-google-btn" onClick={handleCompleteGoogleSignup} disabled={loading}>
+          <button
+            type="button"
+            className="auth-google-btn"
+            onClick={handleCompleteGoogleSignup}
+            disabled={loading}
+          >
             Finish Google signup
           </button>
         ) : (
-          <button type="button" className="auth-google-btn" onClick={handleGoogleAuth} disabled={loading}>
-            <span className="google-icon" aria-hidden="true">G</span>
+          <button
+            type="button"
+            className="auth-google-btn"
+            onClick={handleGoogleAuth}
+            disabled={loading}
+          >
+            <span className="google-icon" aria-hidden="true">
+              G
+            </span>
             Continue with Google
           </button>
         )}
         <p className="auth-switch-row">
           {isSignup ? "Already have an account?" : "Need an account?"}{" "}
-          <Link className="auth-switch-link" to={isSignup ? "/login" : "/signup"}>
+          <Link
+            className="auth-switch-link"
+            to={isSignup ? "/login" : "/signup"}
+          >
             {isSignup ? "Sign in" : "Sign up"}
           </Link>
         </p>
         {authNotice && <p className="subtle">{authNotice}</p>}
-        {error && <div role="alert" aria-live="assertive" className="error">{error}</div>}
+        {error && (
+          <div role="alert" aria-live="assertive" className="error">
+            {error}
+          </div>
+        )}
       </section>
     </main>
   );
@@ -759,11 +962,28 @@ function AdminApp() {
 
   const [customFieldsBuilder, setCustomFieldsBuilder] = useState([]);
   const addBuilderField = () => {
-    if (customFieldsBuilder.length >= 10) { setError("Maximum 10 custom fields allowed."); return; }
-    setCustomFieldsBuilder((prev) => [...prev, { id: `f${Date.now()}`, label: "", type: "text", required: false, options: "", order: prev.length }]);
+    if (customFieldsBuilder.length >= 10) {
+      setError("Maximum 10 custom fields allowed.");
+      return;
+    }
+    setCustomFieldsBuilder((prev) => [
+      ...prev,
+      {
+        id: `f${Date.now()}`,
+        label: "",
+        type: "text",
+        required: false,
+        options: "",
+        order: prev.length,
+      },
+    ]);
   };
-  const removeBuilderField = (idx) => setCustomFieldsBuilder((prev) => prev.filter((_, i) => i !== idx));
-  const updateBuilderField = (idx, key, val) => setCustomFieldsBuilder((prev) => prev.map((f, i) => i === idx ? { ...f, [key]: val } : f));
+  const removeBuilderField = (idx) =>
+    setCustomFieldsBuilder((prev) => prev.filter((_, i) => i !== idx));
+  const updateBuilderField = (idx, key, val) =>
+    setCustomFieldsBuilder((prev) =>
+      prev.map((f, i) => (i === idx ? { ...f, [key]: val } : f)),
+    );
   const moveBuilderField = (idx, direction) => {
     setCustomFieldsBuilder((prev) => {
       const arr = [...prev];
@@ -791,7 +1011,9 @@ function AdminApp() {
         apiRequest("/admin/reports/summary", { token: authToken }),
         apiRequest("/admin/reports/transactions", { token: authToken }),
       ]);
-      const insightData = await apiRequest("/admin/reports/insights", { token: authToken });
+      const insightData = await apiRequest("/admin/reports/insights", {
+        token: authToken,
+      });
       setUser(me);
       setPages(pageList);
       setSummary(reportSummary);
@@ -824,9 +1046,18 @@ function AdminApp() {
           description: pageForm.description,
           logoUrl: pageForm.logoUrl,
           amountMode: pageForm.amountMode,
-          fixedAmount: pageForm.amountMode === "fixed" ? Number(pageForm.fixedAmount) : undefined,
-          minAmount: pageForm.amountMode === "range" ? Number(pageForm.minAmount) : undefined,
-          maxAmount: pageForm.amountMode === "range" ? Number(pageForm.maxAmount) : undefined,
+          fixedAmount:
+            pageForm.amountMode === "fixed"
+              ? Number(pageForm.fixedAmount)
+              : undefined,
+          minAmount:
+            pageForm.amountMode === "range"
+              ? Number(pageForm.minAmount)
+              : undefined,
+          maxAmount:
+            pageForm.amountMode === "range"
+              ? Number(pageForm.maxAmount)
+              : undefined,
           glCodes: pageForm.glCodes
             .split(",")
             .map((code) => code.trim())
@@ -839,7 +1070,13 @@ function AdminApp() {
             label: f.label,
             type: f.type,
             required: f.required,
-            options: f.type === "dropdown" ? f.options.split(",").map((o) => o.trim()).filter(Boolean) : [],
+            options:
+              f.type === "dropdown"
+                ? f.options
+                    .split(",")
+                    .map((o) => o.trim())
+                    .filter(Boolean)
+                : [],
             order: f.order,
           })),
         },
@@ -880,7 +1117,11 @@ function AdminApp() {
 
   const handleToggleStatus = async (pageId, currentActive) => {
     try {
-      await apiRequest(`/admin/pages/${pageId}/status`, { method: "PATCH", token, body: { isActive: !currentActive } });
+      await apiRequest(`/admin/pages/${pageId}/status`, {
+        method: "PATCH",
+        token,
+        body: { isActive: !currentActive },
+      });
       await fetchDashboard(token);
     } catch (err) {
       setError(err.message);
@@ -888,13 +1129,18 @@ function AdminApp() {
   };
 
   const fetchVersions = async (pageId) => {
-    const versions = await apiRequest(`/admin/pages/${pageId}/versions`, { token });
+    const versions = await apiRequest(`/admin/pages/${pageId}/versions`, {
+      token,
+    });
     setPageVersions((prev) => ({ ...prev, [pageId]: versions }));
   };
 
   const publishDraft = async (pageId) => {
     try {
-      await apiRequest(`/admin/pages/${pageId}/publish`, { method: "POST", token });
+      await apiRequest(`/admin/pages/${pageId}/publish`, {
+        method: "POST",
+        token,
+      });
       await fetchDashboard(token);
       await fetchVersions(pageId);
     } catch (err) {
@@ -904,7 +1150,9 @@ function AdminApp() {
 
   const rollbackLatest = async (pageId) => {
     try {
-      const versions = pageVersions[pageId] || (await apiRequest(`/admin/pages/${pageId}/versions`, { token }));
+      const versions =
+        pageVersions[pageId] ||
+        (await apiRequest(`/admin/pages/${pageId}/versions`, { token }));
       const target = versions[1];
       if (!target) {
         setError("No prior version available to rollback.");
@@ -945,18 +1193,24 @@ function AdminApp() {
           <span />
         </div>
         <nav aria-label="Admin navigation">
-          {["overview", "insights", "pages", "create", "transactions"].map((item) => (
-            <button
-              key={item}
-              className={view === item ? "nav-btn active" : "nav-btn"}
-              onClick={() => setView(item)}
-              aria-current={view === item ? "page" : undefined}
-            >
-              {item[0].toUpperCase() + item.slice(1)}
-            </button>
-          ))}
+          {["overview", "insights", "pages", "create", "transactions"].map(
+            (item) => (
+              <button
+                key={item}
+                className={view === item ? "nav-btn active" : "nav-btn"}
+                onClick={() => setView(item)}
+                aria-current={view === item ? "page" : undefined}
+              >
+                {item[0].toUpperCase() + item.slice(1)}
+              </button>
+            ),
+          )}
         </nav>
-        <button className="logout-btn" onClick={handleLogout} aria-label="Sign out">
+        <button
+          className="logout-btn"
+          onClick={handleLogout}
+          aria-label="Sign out"
+        >
           Log out
         </button>
       </aside>
@@ -966,7 +1220,11 @@ function AdminApp() {
           <p className="eyebrow">Healthcare Payments Control Center</p>
           <h1>Design-forward operations dashboard</h1>
         </header>
-        {error && <div role="alert" aria-live="assertive" className="error">{error}</div>}
+        {error && (
+          <div role="alert" aria-live="assertive" className="error">
+            {error}
+          </div>
+        )}
 
         {view === "overview" && (
           <>
@@ -999,7 +1257,9 @@ function AdminApp() {
                 <section className="panel chart-panel">
                   <div>
                     <h3>Collection velocity</h3>
-                    <p className="subtle">A visual trend of payment movement in your current cycle.</p>
+                    <p className="subtle">
+                      A visual trend of payment movement in your current cycle.
+                    </p>
                   </div>
                   <MiniAreaChart
                     values={[
@@ -1017,12 +1277,18 @@ function AdminApp() {
                   {summary?.byPaymentMethod?.length ? (
                     <MethodBars items={summary.byPaymentMethod} />
                   ) : (
-                    <p className="subtle">No successful transactions yet. Run a test payment to populate this view.</p>
+                    <p className="subtle">
+                      No successful transactions yet. Run a test payment to
+                      populate this view.
+                    </p>
                   )}
                 </section>
                 <section className="panel">
                   <h3>Payment pages</h3>
-                  <p>{pages.length} configured pages across your payment portfolio.</p>
+                  <p>
+                    {pages.length} configured pages across your payment
+                    portfolio.
+                  </p>
                 </section>
                 <section className="panel">
                   <ActivityFeed authToken={token} />
@@ -1032,15 +1298,21 @@ function AdminApp() {
           </>
         )}
 
-        {view === "insights" && (
-          loading ? (
+        {view === "insights" &&
+          (loading ? (
             <LoadingSkeleton />
           ) : !insights ? (
-            <EmptyState title="No insights yet" message="Perform some payment activity to populate analytics." />
+            <EmptyState
+              title="No insights yet"
+              message="Perform some payment activity to populate analytics."
+            />
           ) : (
             <>
               <section className="stats-grid">
-                <StatCard label="Page Views" value={insights.overview.totalViews.toLocaleString()} />
+                <StatCard
+                  label="Page Views"
+                  value={insights.overview.totalViews.toLocaleString()}
+                />
                 <StatCard
                   label="Checkout Starts"
                   value={insights.overview.totalTransactions.toLocaleString()}
@@ -1056,24 +1328,35 @@ function AdminApp() {
                   <div className="method-row">
                     <div className="method-meta">
                       <span>View to Checkout</span>
-                      <strong>{(insights.funnel.viewToCheckoutRate * 100).toFixed(1)}%</strong>
+                      <strong>
+                        {(insights.funnel.viewToCheckoutRate * 100).toFixed(1)}%
+                      </strong>
                     </div>
                     <div className="bar-track">
                       <span
                         className="bar-fill"
-                        style={{ width: `${Math.max(4, insights.funnel.viewToCheckoutRate * 100)}%` }}
+                        style={{
+                          width: `${Math.max(4, insights.funnel.viewToCheckoutRate * 100)}%`,
+                        }}
                       />
                     </div>
                   </div>
                   <div className="method-row">
                     <div className="method-meta">
                       <span>Checkout to Success</span>
-                      <strong>{(insights.funnel.checkoutToSuccessRate * 100).toFixed(1)}%</strong>
+                      <strong>
+                        {(insights.funnel.checkoutToSuccessRate * 100).toFixed(
+                          1,
+                        )}
+                        %
+                      </strong>
                     </div>
                     <div className="bar-track">
                       <span
                         className="bar-fill"
-                        style={{ width: `${Math.max(4, insights.funnel.checkoutToSuccessRate * 100)}%` }}
+                        style={{
+                          width: `${Math.max(4, insights.funnel.checkoutToSuccessRate * 100)}%`,
+                        }}
                       />
                     </div>
                   </div>
@@ -1107,11 +1390,10 @@ function AdminApp() {
                 </div>
               </section>
             </>
-          )
-        )}
+          ))}
 
-        {view === "pages" && (
-          loading ? (
+        {view === "pages" &&
+          (loading ? (
             <LoadingSkeleton />
           ) : pages.length === 0 ? (
             <EmptyState
@@ -1120,119 +1402,149 @@ function AdminApp() {
             />
           ) : (
             <>
-            <section className="panel">
-              <h3>Configured pages</h3>
-              <div className="table-wrap">
-                <table aria-label="Payment pages">
-                  <thead>
-                    <tr>
-                      <th scope="col">Title</th>
-                      <th scope="col">Slug</th>
-                      <th scope="col">Status</th>
-                      <th scope="col">Amount mode</th>
-                      <th scope="col">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {pages.map((page) => (
-                      <tr key={page.id}>
-                        <td>{page.title}</td>
-                        <td>/{page.slug}</td>
-                        <td>{page.isActive ? "Active" : "Disabled"}</td>
-                        <td>{page.amountMode}</td>
-                        <td>
-                          <button
-                            className="tiny-btn"
-                            onClick={() => handleCopy(page.id)}
-                            aria-label={`Copy URL for ${page.title}`}
-                          >
-                            Copy URL
-                          </button>
-                          <button
-                            className={`tiny-btn${selectedPage?.id === page.id ? " active" : ""}`}
-                            onClick={() => setSelectedPage(selectedPage?.id === page.id ? null : page)}
-                            aria-label={selectedPage?.id === page.id ? `Close distribution panel for ${page.title}` : `Distribute ${page.title}`}
-                            aria-expanded={selectedPage?.id === page.id}
-                          >
-                            {selectedPage?.id === page.id ? "Close" : "Distribute"}
-                          </button>
-                          {canEditPages && (
-                            <>
-                              <button
-                                className="tiny-btn"
-                                onClick={() => handleToggleStatus(page.id, page.isActive)}
-                                aria-label={page.isActive ? `Disable ${page.title}` : `Enable ${page.title}`}
-                              >
-                                {page.isActive ? "Disable" : "Enable"}
-                              </button>
-                              <button
-                                className="tiny-btn"
-                                onClick={() => fetchVersions(page.id)}
-                                aria-label={`View versions for ${page.title}`}
-                              >
-                                Versions
-                              </button>
-                              {page.hasDraft && (
+              <section className="panel">
+                <h3>Configured pages</h3>
+                <div className="table-wrap">
+                  <table aria-label="Payment pages">
+                    <thead>
+                      <tr>
+                        <th scope="col">Title</th>
+                        <th scope="col">Slug</th>
+                        <th scope="col">Status</th>
+                        <th scope="col">Amount mode</th>
+                        <th scope="col">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {pages.map((page) => (
+                        <tr key={page.id}>
+                          <td>{page.title}</td>
+                          <td>/{page.slug}</td>
+                          <td>{page.isActive ? "Active" : "Disabled"}</td>
+                          <td>{page.amountMode}</td>
+                          <td>
+                            <button
+                              className="tiny-btn"
+                              onClick={() => handleCopy(page.id)}
+                              aria-label={`Copy URL for ${page.title}`}
+                            >
+                              Copy URL
+                            </button>
+                            <button
+                              className={`tiny-btn${selectedPage?.id === page.id ? " active" : ""}`}
+                              onClick={() =>
+                                setSelectedPage(
+                                  selectedPage?.id === page.id ? null : page,
+                                )
+                              }
+                              aria-label={
+                                selectedPage?.id === page.id
+                                  ? `Close distribution panel for ${page.title}`
+                                  : `Distribute ${page.title}`
+                              }
+                              aria-expanded={selectedPage?.id === page.id}
+                            >
+                              {selectedPage?.id === page.id
+                                ? "Close"
+                                : "Distribute"}
+                            </button>
+                            {canEditPages && (
+                              <>
                                 <button
                                   className="tiny-btn"
-                                  onClick={() => publishDraft(page.id)}
-                                  aria-label={`Publish draft for ${page.title}`}
+                                  onClick={() =>
+                                    handleToggleStatus(page.id, page.isActive)
+                                  }
+                                  aria-label={
+                                    page.isActive
+                                      ? `Disable ${page.title}`
+                                      : `Enable ${page.title}`
+                                  }
                                 >
-                                  Publish Draft
+                                  {page.isActive ? "Disable" : "Enable"}
                                 </button>
-                              )}
-                              <button
-                                className="tiny-btn"
-                                onClick={() => rollbackLatest(page.id)}
-                                aria-label={`Rollback ${page.title} to previous version`}
-                              >
-                                Rollback
-                              </button>
-                            </>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-              {Object.entries(pageVersions).map(([pageId, versions]) => (
-                <div key={pageId} className="versions-block">
-                  <h4>Versions for page {pages.find((p) => p.id === pageId)?.title || pageId}</h4>
-                  <ul>
-                    {versions.slice(0, 5).map((v) => (
-                      <li key={`${pageId}-${v.versionNumber}`}>
-                        v{v.versionNumber} - {new Date(v.createdAt).toLocaleString()}
-                      </li>
-                    ))}
-                  </ul>
+                                <button
+                                  className="tiny-btn"
+                                  onClick={() => fetchVersions(page.id)}
+                                  aria-label={`View versions for ${page.title}`}
+                                >
+                                  Versions
+                                </button>
+                                {page.hasDraft && (
+                                  <button
+                                    className="tiny-btn"
+                                    onClick={() => publishDraft(page.id)}
+                                    aria-label={`Publish draft for ${page.title}`}
+                                  >
+                                    Publish Draft
+                                  </button>
+                                )}
+                                <button
+                                  className="tiny-btn"
+                                  onClick={() => rollbackLatest(page.id)}
+                                  aria-label={`Rollback ${page.title} to previous version`}
+                                >
+                                  Rollback
+                                </button>
+                              </>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
-              ))}
-            </section>
-            {selectedPage && (
-              <section className="panel">
-                <h3>Distribute — {selectedPage.title}</h3>
-                <DistributionPanel pageSlug={selectedPage.slug} pageTitle={selectedPage.title} />
+                {Object.entries(pageVersions).map(([pageId, versions]) => (
+                  <div key={pageId} className="versions-block">
+                    <h4>
+                      Versions for page{" "}
+                      {pages.find((p) => p.id === pageId)?.title || pageId}
+                    </h4>
+                    <ul>
+                      {versions.slice(0, 5).map((v) => (
+                        <li key={`${pageId}-${v.versionNumber}`}>
+                          v{v.versionNumber} -{" "}
+                          {new Date(v.createdAt).toLocaleString()}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ))}
               </section>
-            )}
+              {selectedPage && (
+                <section className="panel">
+                  <h3>Distribute — {selectedPage.title}</h3>
+                  <DistributionPanel
+                    pageSlug={selectedPage.slug}
+                    pageTitle={selectedPage.title}
+                  />
+                </section>
+              )}
             </>
-          )
-        )}
+          ))}
 
         {view === "create" && (
           <div className="create-grid">
             <section className="panel">
               <h3>Create payment page</h3>
               {!canEditPages && (
-                <p className="error">Your role is read-only. Ask an owner to grant editor access.</p>
+                <p className="error">
+                  Your role is read-only. Ask an owner to grant editor access.
+                </p>
               )}
-              <form className="form-grid" onSubmit={handleCreatePage} aria-label="Create payment page">
+              <form
+                className="form-grid"
+                onSubmit={handleCreatePage}
+                aria-label="Create payment page"
+              >
                 <div className="field-group">
                   <label htmlFor="cf-title">Page title *</label>
                   <input
                     id="cf-title"
                     value={pageForm.title}
-                    onChange={(e) => setPageForm((p) => ({ ...p, title: e.target.value }))}
+                    onChange={(e) =>
+                      setPageForm((p) => ({ ...p, title: e.target.value }))
+                    }
                     required
                     aria-required="true"
                   />
@@ -1242,7 +1554,9 @@ function AdminApp() {
                   <input
                     id="cf-subtitle"
                     value={pageForm.subtitle}
-                    onChange={(e) => setPageForm((p) => ({ ...p, subtitle: e.target.value }))}
+                    onChange={(e) =>
+                      setPageForm((p) => ({ ...p, subtitle: e.target.value }))
+                    }
                   />
                 </div>
                 <div className="field-group">
@@ -1250,7 +1564,12 @@ function AdminApp() {
                   <input
                     id="cf-description"
                     value={pageForm.description}
-                    onChange={(e) => setPageForm((p) => ({ ...p, description: e.target.value }))}
+                    onChange={(e) =>
+                      setPageForm((p) => ({
+                        ...p,
+                        description: e.target.value,
+                      }))
+                    }
                   />
                 </div>
                 <div className="field-group">
@@ -1259,7 +1578,9 @@ function AdminApp() {
                     id="cf-logoUrl"
                     type="url"
                     value={pageForm.logoUrl}
-                    onChange={(e) => setPageForm((p) => ({ ...p, logoUrl: e.target.value }))}
+                    onChange={(e) =>
+                      setPageForm((p) => ({ ...p, logoUrl: e.target.value }))
+                    }
                     placeholder="https://example.com/logo.png"
                   />
                 </div>
@@ -1268,7 +1589,12 @@ function AdminApp() {
                   <input
                     id="cf-slug"
                     value={pageForm.slug}
-                    onChange={(e) => setPageForm((p) => ({ ...p, slug: e.target.value.toLowerCase() }))}
+                    onChange={(e) =>
+                      setPageForm((p) => ({
+                        ...p,
+                        slug: e.target.value.toLowerCase(),
+                      }))
+                    }
                     required
                     aria-required="true"
                   />
@@ -1279,7 +1605,9 @@ function AdminApp() {
                     id="cf-brandColor"
                     type="color"
                     value={pageForm.brandColor}
-                    onChange={(e) => setPageForm((p) => ({ ...p, brandColor: e.target.value }))}
+                    onChange={(e) =>
+                      setPageForm((p) => ({ ...p, brandColor: e.target.value }))
+                    }
                   />
                 </div>
                 <div className="field-group">
@@ -1287,7 +1615,12 @@ function AdminApp() {
                   <input
                     id="cf-headerMessage"
                     value={pageForm.headerMessage}
-                    onChange={(e) => setPageForm((p) => ({ ...p, headerMessage: e.target.value }))}
+                    onChange={(e) =>
+                      setPageForm((p) => ({
+                        ...p,
+                        headerMessage: e.target.value,
+                      }))
+                    }
                   />
                 </div>
                 <div className="field-group">
@@ -1295,7 +1628,12 @@ function AdminApp() {
                   <input
                     id="cf-footerMessage"
                     value={pageForm.footerMessage}
-                    onChange={(e) => setPageForm((p) => ({ ...p, footerMessage: e.target.value }))}
+                    onChange={(e) =>
+                      setPageForm((p) => ({
+                        ...p,
+                        footerMessage: e.target.value,
+                      }))
+                    }
                   />
                 </div>
                 <fieldset className="form-fieldset">
@@ -1305,7 +1643,12 @@ function AdminApp() {
                     <select
                       id="cf-amountMode"
                       value={pageForm.amountMode}
-                      onChange={(e) => setPageForm((p) => ({ ...p, amountMode: e.target.value }))}
+                      onChange={(e) =>
+                        setPageForm((p) => ({
+                          ...p,
+                          amountMode: e.target.value,
+                        }))
+                      }
                     >
                       <option value="fixed">Fixed</option>
                       <option value="range">Range</option>
@@ -1321,7 +1664,12 @@ function AdminApp() {
                         min="0"
                         step="0.01"
                         value={pageForm.fixedAmount}
-                        onChange={(e) => setPageForm((p) => ({ ...p, fixedAmount: e.target.value }))}
+                        onChange={(e) =>
+                          setPageForm((p) => ({
+                            ...p,
+                            fixedAmount: e.target.value,
+                          }))
+                        }
                       />
                     </div>
                   )}
@@ -1335,7 +1683,12 @@ function AdminApp() {
                           min="0"
                           step="0.01"
                           value={pageForm.minAmount}
-                          onChange={(e) => setPageForm((p) => ({ ...p, minAmount: e.target.value }))}
+                          onChange={(e) =>
+                            setPageForm((p) => ({
+                              ...p,
+                              minAmount: e.target.value,
+                            }))
+                          }
                         />
                       </div>
                       <div className="field-group">
@@ -1346,7 +1699,12 @@ function AdminApp() {
                           min="0"
                           step="0.01"
                           value={pageForm.maxAmount}
-                          onChange={(e) => setPageForm((p) => ({ ...p, maxAmount: e.target.value }))}
+                          onChange={(e) =>
+                            setPageForm((p) => ({
+                              ...p,
+                              maxAmount: e.target.value,
+                            }))
+                          }
                         />
                       </div>
                     </>
@@ -1357,12 +1715,21 @@ function AdminApp() {
                   <input
                     id="cf-glCodes"
                     value={pageForm.glCodes}
-                    onChange={(e) => setPageForm((p) => ({ ...p, glCodes: e.target.value }))}
+                    onChange={(e) =>
+                      setPageForm((p) => ({ ...p, glCodes: e.target.value }))
+                    }
                   />
                 </div>
                 <div className="field-builder-header">
                   <span>Custom fields ({customFieldsBuilder.length}/10)</span>
-                  <button type="button" className="tiny-btn" onClick={addBuilderField} aria-label="Add custom field">+ Add field</button>
+                  <button
+                    type="button"
+                    className="tiny-btn"
+                    onClick={addBuilderField}
+                    aria-label="Add custom field"
+                  >
+                    + Add field
+                  </button>
                 </div>
                 {customFieldsBuilder.map((field, idx) => (
                   <div key={field.id} className="field-builder-row">
@@ -1370,12 +1737,16 @@ function AdminApp() {
                       aria-label={`Custom field ${idx + 1} label`}
                       placeholder="Field label"
                       value={field.label}
-                      onChange={(e) => updateBuilderField(idx, "label", e.target.value)}
+                      onChange={(e) =>
+                        updateBuilderField(idx, "label", e.target.value)
+                      }
                     />
                     <select
                       aria-label={`Custom field ${idx + 1} type`}
                       value={field.type}
-                      onChange={(e) => updateBuilderField(idx, "type", e.target.value)}
+                      onChange={(e) =>
+                        updateBuilderField(idx, "type", e.target.value)
+                      }
                     >
                       <option value="text">Text</option>
                       <option value="number">Number</option>
@@ -1388,14 +1759,18 @@ function AdminApp() {
                         aria-label={`Custom field ${idx + 1} dropdown options`}
                         placeholder="Options (comma separated)"
                         value={field.options}
-                        onChange={(e) => updateBuilderField(idx, "options", e.target.value)}
+                        onChange={(e) =>
+                          updateBuilderField(idx, "options", e.target.value)
+                        }
                       />
                     )}
                     <label className="checkbox-line">
                       <input
                         type="checkbox"
                         checked={field.required}
-                        onChange={(e) => updateBuilderField(idx, "required", e.target.checked)}
+                        onChange={(e) =>
+                          updateBuilderField(idx, "required", e.target.checked)
+                        }
                         aria-label={`${field.label || `Field ${idx + 1}`} required`}
                       />
                       Required
@@ -1406,20 +1781,26 @@ function AdminApp() {
                       onClick={() => moveBuilderField(idx, "up")}
                       disabled={idx === 0}
                       aria-label={`Move ${field.label || `field ${idx + 1}`} up`}
-                    >↑</button>
+                    >
+                      ↑
+                    </button>
                     <button
                       type="button"
                       className="tiny-btn"
                       onClick={() => moveBuilderField(idx, "down")}
                       disabled={idx === customFieldsBuilder.length - 1}
                       aria-label={`Move ${field.label || `field ${idx + 1}`} down`}
-                    >↓</button>
+                    >
+                      ↓
+                    </button>
                     <button
                       type="button"
                       className="tiny-btn"
                       onClick={() => removeBuilderField(idx)}
                       aria-label={`Remove ${field.label || `field ${idx + 1}`}`}
-                    >Remove</button>
+                    >
+                      Remove
+                    </button>
                   </div>
                 ))}
                 <button type="submit" disabled={loading || !canEditPages}>
@@ -1432,34 +1813,39 @@ function AdminApp() {
                     try {
                       const targetPage = pages[0];
                       if (!targetPage) {
-                        setError("Create a page first, then use Save as Draft.");
+                        setError(
+                          "Create a page first, then use Save as Draft.",
+                        );
                         return;
                       }
-                      await apiRequest(`/admin/pages/${targetPage.id}?mode=draft`, {
-                        method: "PUT",
-                        token,
-                        body: {
-                          slug: targetPage.slug,
-                          title: pageForm.title || targetPage.title,
-                          subtitle: pageForm.subtitle,
-                          description: targetPage.description || "",
-                          logoUrl: targetPage.logoUrl || "",
-                          brandColor: pageForm.brandColor,
-                          headerMessage: pageForm.headerMessage,
-                          footerMessage: pageForm.footerMessage,
-                          amountMode: pageForm.amountMode,
-                          fixedAmount: Number(pageForm.fixedAmount),
-                          minAmount: targetPage.minAmount,
-                          maxAmount: targetPage.maxAmount,
-                          glCodes: pageForm.glCodes
-                            .split(",")
-                            .map((code) => code.trim())
-                            .filter(Boolean),
-                          emailTemplate: targetPage.emailTemplate || "",
-                          isActive: true,
-                          customFields: targetPage.customFields || [],
+                      await apiRequest(
+                        `/admin/pages/${targetPage.id}?mode=draft`,
+                        {
+                          method: "PUT",
+                          token,
+                          body: {
+                            slug: targetPage.slug,
+                            title: pageForm.title || targetPage.title,
+                            subtitle: pageForm.subtitle,
+                            description: targetPage.description || "",
+                            logoUrl: targetPage.logoUrl || "",
+                            brandColor: pageForm.brandColor,
+                            headerMessage: pageForm.headerMessage,
+                            footerMessage: pageForm.footerMessage,
+                            amountMode: pageForm.amountMode,
+                            fixedAmount: Number(pageForm.fixedAmount),
+                            minAmount: targetPage.minAmount,
+                            maxAmount: targetPage.maxAmount,
+                            glCodes: pageForm.glCodes
+                              .split(",")
+                              .map((code) => code.trim())
+                              .filter(Boolean),
+                            emailTemplate: targetPage.emailTemplate || "",
+                            isActive: true,
+                            customFields: targetPage.customFields || [],
+                          },
                         },
-                      });
+                      );
                       await fetchDashboard(token);
                       setView("pages");
                     } catch (err) {
@@ -1483,7 +1869,10 @@ function AdminApp() {
                   <div className="preview-banner">{pageForm.headerMessage}</div>
                   <label>
                     Payment amount
-                    <input readOnly value={`$${Number(pageForm.fixedAmount || 0).toFixed(2)}`} />
+                    <input
+                      readOnly
+                      value={`$${Number(pageForm.fixedAmount || 0).toFixed(2)}`}
+                    />
                   </label>
                   <label>
                     Email
@@ -1497,8 +1886,8 @@ function AdminApp() {
           </div>
         )}
 
-        {view === "transactions" && (
-          loading ? (
+        {view === "transactions" &&
+          (loading ? (
             <LoadingSkeleton />
           ) : transactions.length === 0 ? (
             <EmptyState
@@ -1533,24 +1922,41 @@ function AdminApp() {
                 </table>
               </div>
             </section>
-          )
-        )}
+          ))}
       </main>
     </div>
+  );
+}
+
+function AnimatedAppRoutes() {
+  const location = useLocation();
+
+  return (
+    <AnimatePresence mode="wait" initial={false}>
+      <motion.div
+        key={location.pathname}
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        exit={{ opacity: 0, y: -10 }}
+        transition={{ duration: 0.24, ease: "easeOut" }}
+      >
+        <Routes location={location}>
+          <Route path="/" element={<HomePage />} />
+          <Route path="/dashboard" element={<AdminApp />} />
+          <Route path="/login" element={<AuthPage mode="login" />} />
+          <Route path="/signup" element={<AuthPage mode="signup" />} />
+          <Route path="/pay/:slug" element={<PublicPaymentPage />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </motion.div>
+    </AnimatePresence>
   );
 }
 
 function App() {
   return (
     <BrowserRouter>
-      <Routes>
-        <Route path="/" element={<HomePage />} />
-        <Route path="/dashboard" element={<AdminApp />} />
-        <Route path="/login" element={<AuthPage mode="login" />} />
-        <Route path="/signup" element={<AuthPage mode="signup" />} />
-        <Route path="/pay/:slug" element={<PublicPaymentPage />} />
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
+      <AnimatedAppRoutes />
     </BrowserRouter>
   );
 }
