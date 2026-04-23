@@ -396,7 +396,7 @@ pagesRouter.get("/:id/share", async (req, res, next) => {
     const row = await db.get("SELECT * FROM payment_pages WHERE id = ?", [req.params.id]);
     if (!row) return res.status(404).json({ error: "Page not found" });
     const base = process.env.BASE_PUBLIC_URL || `http://localhost:${process.env.PORT || 4000}`;
-    const publicUrl = `${base.replace(/\/$/, "")}/public/pay/${row.slug}`;
+    const publicUrl = `${base.replace(/\/$/, "")}/pay/${row.slug}`;
     const iframeSnippet = `<iframe src="${publicUrl}" title="${row.title}" width="100%" height="720" style="border:0;" loading="lazy"></iframe>`;
     const qrCodeDataUrl = await QRCode.toDataURL(publicUrl);
 
