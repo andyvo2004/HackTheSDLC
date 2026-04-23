@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { BrowserRouter, Navigate, Route, Routes, useParams } from "react-router-dom";
+import { BrowserRouter, Link, Navigate, Route, Routes, useNavigate, useParams } from "react-router-dom";
 import { CardElement, Elements, useElements, useStripe } from "@stripe/react-stripe-js";
 import { loadStripe } from "@stripe/stripe-js";
 import { DistributionPanel } from "./components/DistributionPanel.jsx";
 import { getContrastColor } from "./utils/color.js";
 import ActivityFeed from "./components/ActivityFeed.jsx";
+import { supabase } from "./lib/supabaseClient.js";
 
 const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:4000";
 const STRIPE_KEY = import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY || "";
@@ -22,7 +23,9 @@ async function apiRequest(path, { method = "GET", token, body } = {}) {
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
     const msg = payload.error || payload.message || "Request failed";
-    throw new Error(msg);
+    const err = new Error(msg);
+    if (payload.code) err.code = payload.code;
+    throw err;
   }
   return payload;
 }
@@ -496,6 +499,234 @@ function PublicPaymentPage() {
   );
 }
 
+function AuthPage({ mode }) {
+  const navigate = useNavigate();
+  const existingToken = localStorage.getItem("qpp_token");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [authNotice, setAuthNotice] = useState("");
+  const [signupRole, setSignupRole] = useState("");
+  const [needsGoogleRoleCompletion, setNeedsGoogleRoleCompletion] = useState(false);
+  const [loginForm, setLoginForm] = useState({
+    email: "",
+    password: "",
+  });
+
+  const isSignup = mode === "signup";
+
+  if (existingToken) {
+    return <Navigate to="/" replace />;
+  }
+
+  const exchangeSupabaseSession = async (selectedRole = "") => {
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+    if (!session?.access_token) return false;
+    const exchange = await apiRequest("/auth/supabase/exchange", {
+      method: "POST",
+      body: {
+        accessToken: session.access_token,
+        ...(selectedRole ? { role: selectedRole } : {}),
+      },
+    });
+    localStorage.setItem("qpp_token", exchange.token);
+    navigate("/", { replace: true });
+    return true;
+  };
+
+  const handleLogin = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    setError("");
+    setAuthNotice("");
+    try {
+      const { error: supabaseError } = await supabase.auth.signInWithPassword({
+        email: loginForm.email,
+        password: loginForm.password,
+      });
+      if (supabaseError) {
+        throw supabaseError;
+      }
+      const data = await apiRequest("/auth/login", {
+        method: "POST",
+        body: loginForm,
+      });
+      localStorage.setItem("qpp_token", data.token);
+      navigate("/", { replace: true });
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSignup = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    setError("");
+    setAuthNotice("");
+    try {
+      if (!signupRole) {
+        throw new Error("Please select an account type.");
+      }
+      await apiRequest("/auth/signup", {
+        method: "POST",
+        body: {
+          email: loginForm.email,
+          password: loginForm.password,
+          role: signupRole,
+        },
+      });
+      setAuthNotice("Account created. Check your email to confirm, then sign in.");
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleGoogleAuth = async () => {
+    setLoading(true);
+    setError("");
+    setAuthNotice("");
+    try {
+      const { error: oauthError } = await supabase.auth.signInWithOAuth({
+        provider: "google",
+        options: {
+          redirectTo: `${window.location.origin}/login`,
+        },
+      });
+      if (oauthError) throw oauthError;
+    } catch (err) {
+      setError(err.message);
+      setLoading(false);
+    }
+  };
+
+  const handleCompleteGoogleSignup = async () => {
+    setLoading(true);
+    setError("");
+    setAuthNotice("");
+    try {
+      if (!signupRole) {
+        throw new Error("Please select an account type before continuing.");
+      }
+      const exchanged = await exchangeSupabaseSession(signupRole);
+      if (!exchanged) {
+        throw new Error("Google session not found. Please click Continue with Google first.");
+      }
+      setNeedsGoogleRoleCompletion(false);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    let cancelled = false;
+    async function tryExchange() {
+      try {
+        if (cancelled) return;
+        const exchanged = await exchangeSupabaseSession();
+        if (exchanged) return;
+      } catch (err) {
+        if (cancelled) return;
+        if (err.code === "ROLE_REQUIRED") {
+          setNeedsGoogleRoleCompletion(true);
+          setAuthNotice("Google account found. Select account type to finish setup.");
+          if (!isSignup) navigate("/signup", { replace: true });
+          return;
+        }
+        setError(err.message);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+    tryExchange();
+    return () => {
+      cancelled = true;
+    };
+  }, [isSignup, navigate]);
+
+  return (
+    <main className="auth-shell">
+      <section className="auth-card">
+        <p className="eyebrow">Waystar Inspired Experience</p>
+        <h1>{isSignup ? "Create Admin Account" : "Admin Sign In"}</h1>
+        <p className="auth-subtitle">
+          {isSignup
+            ? "Choose your account type, then confirm your email to continue."
+            : "Sign in to manage branded payment pages and reporting."}
+        </p>
+        <form className="form-grid" onSubmit={isSignup ? handleSignup : handleLogin} aria-label={isSignup ? "Admin sign up" : "Admin sign in"}>
+          <div className="field-group">
+            <label htmlFor="login-email">Email address</label>
+            <input
+              id="login-email"
+              type="email"
+              value={loginForm.email}
+              onChange={(e) => setLoginForm((p) => ({ ...p, email: e.target.value }))}
+              required
+              aria-required="true"
+            />
+          </div>
+          <div className="field-group">
+            <label htmlFor="login-password">Password</label>
+            <input
+              id="login-password"
+              type="password"
+              value={loginForm.password}
+              onChange={(e) => setLoginForm((p) => ({ ...p, password: e.target.value }))}
+              required
+              aria-required="true"
+            />
+          </div>
+          {isSignup && (
+            <div className="field-group">
+              <label htmlFor="signup-role">Account type *</label>
+              <select
+                id="signup-role"
+                value={signupRole}
+                onChange={(e) => setSignupRole(e.target.value)}
+                required
+                aria-required="true"
+              >
+                <option value="">Select account type</option>
+                <option value="viewer">Viewer</option>
+                <option value="editor">Editor</option>
+                <option value="owner">Owner</option>
+              </select>
+            </div>
+          )}
+          <button type="submit" className="auth-submit-btn" disabled={loading}>
+            {loading ? (isSignup ? "Creating account..." : "Signing in...") : (isSignup ? "Create account" : "Sign in")}
+          </button>
+        </form>
+        {needsGoogleRoleCompletion ? (
+          <button type="button" className="auth-google-btn" onClick={handleCompleteGoogleSignup} disabled={loading}>
+            Finish Google signup
+          </button>
+        ) : (
+          <button type="button" className="auth-google-btn" onClick={handleGoogleAuth} disabled={loading}>
+            <span className="google-icon" aria-hidden="true">G</span>
+            Continue with Google
+          </button>
+        )}
+        <p className="auth-switch-row">
+          {isSignup ? "Already have an account?" : "Need an account?"}{" "}
+          <Link className="auth-switch-link" to={isSignup ? "/login" : "/signup"}>
+            {isSignup ? "Sign in" : "Sign up"}
+          </Link>
+        </p>
+        {authNotice && <p className="subtle">{authNotice}</p>}
+        {error && <div role="alert" aria-live="assertive" className="error">{error}</div>}
+      </section>
+    </main>
+  );
+}
+
 function AdminApp() {
   const [token, setToken] = useState(localStorage.getItem("qpp_token") || "");
   const [user, setUser] = useState(null);
@@ -508,11 +739,6 @@ function AdminApp() {
   const [view, setView] = useState("overview");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-
-  const [loginForm, setLoginForm] = useState({
-    email: "admin@example.com",
-    password: "admin12345",
-  });
 
   const [pageForm, setPageForm] = useState({
     slug: "",
@@ -580,25 +806,6 @@ function AdminApp() {
   useEffect(() => {
     if (token) fetchDashboard(token);
   }, [token]);
-
-  const handleLogin = async (e) => {
-    e.preventDefault();
-    setLoading(true);
-    setError("");
-    try {
-      const data = await apiRequest("/auth/login", {
-        method: "POST",
-        body: loginForm,
-      });
-      localStorage.setItem("qpp_token", data.token);
-      setToken(data.token);
-      setUser(data.user);
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const handleCreatePage = async (e) => {
     e.preventDefault();
@@ -716,6 +923,7 @@ function AdminApp() {
 
   const handleLogout = () => {
     localStorage.removeItem("qpp_token");
+    supabase.auth.signOut().catch(() => {});
     setToken("");
     setUser(null);
     setPages([]);
@@ -723,47 +931,7 @@ function AdminApp() {
     setTransactions([]);
   };
 
-  if (!token) {
-    return (
-      <main className="auth-shell">
-        <section className="auth-card">
-          <p className="eyebrow">Waystar Inspired Experience</p>
-          <h1>Admin Sign In</h1>
-          <p className="auth-subtitle">
-            Clean, modern admin control for high-trust payment flows.
-          </p>
-          <form className="form-grid" onSubmit={handleLogin} aria-label="Admin sign in">
-            <div className="field-group">
-              <label htmlFor="login-email">Email address</label>
-              <input
-                id="login-email"
-                type="email"
-                value={loginForm.email}
-                onChange={(e) => setLoginForm((p) => ({ ...p, email: e.target.value }))}
-                required
-                aria-required="true"
-              />
-            </div>
-            <div className="field-group">
-              <label htmlFor="login-password">Password</label>
-              <input
-                id="login-password"
-                type="password"
-                value={loginForm.password}
-                onChange={(e) => setLoginForm((p) => ({ ...p, password: e.target.value }))}
-                required
-                aria-required="true"
-              />
-            </div>
-            <button type="submit" disabled={loading}>
-              {loading ? "Signing in..." : "Sign in"}
-            </button>
-          </form>
-          {error && <div role="alert" aria-live="assertive" className="error">{error}</div>}
-        </section>
-      </main>
-    );
-  }
+  if (!token) return <Navigate to="/login" replace />;
 
   return (
     <div className="app-shell">
@@ -1376,6 +1544,8 @@ function App() {
     <BrowserRouter>
       <Routes>
         <Route path="/" element={<AdminApp />} />
+        <Route path="/login" element={<AuthPage mode="login" />} />
+        <Route path="/signup" element={<AuthPage mode="signup" />} />
         <Route path="/pay/:slug" element={<PublicPaymentPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

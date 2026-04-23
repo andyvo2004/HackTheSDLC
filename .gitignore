@@ -26,6 +26,7 @@ data/
 .npm-cache/
 .tooling/
 .claude
+.cursor/
 
 # OS/editor noise
 .DS_Store
