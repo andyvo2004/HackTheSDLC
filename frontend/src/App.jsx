@@ -83,8 +83,9 @@ function MethodBars({ items }) {
 }
 
 function LoadingSkeleton() {
+  const { t } = useI18n();
   return (
-    <section className="panel skeleton-grid" aria-label="Loading content">
+    <section className="panel skeleton-grid" aria-label={t("loadingContent")}>
       <div className="skeleton-line lg" />
       <div className="skeleton-line" />
       <div className="skeleton-line" />
@@ -519,6 +520,7 @@ function AdminApp() {
   const [insights, setInsights] = useState(null);
   const [pageVersions, setPageVersions] = useState({});
   const [selectedPage, setSelectedPage] = useState(null);
+  const [mobileActionsPageId, setMobileActionsPageId] = useState(null);
   const [view, setView] = useState("overview");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -965,13 +967,13 @@ function AdminApp() {
           ) : (
             <>
               <section className="stats-grid">
-                <StatCard label="Page Views" value={insights.overview.totalViews.toLocaleString()} />
+                <StatCard label={t("pageViews")} value={insights.overview.totalViews.toLocaleString()} />
                 <StatCard
-                  label="Checkout Starts"
+                  label={t("checkoutStarts")}
                   value={insights.overview.totalTransactions.toLocaleString()}
                 />
                 <StatCard
-                  label="Successful Payments"
+                  label={t("successfulPayments")}
                   value={insights.overview.successfulTransactions.toLocaleString()}
                 />
               </section>
@@ -1059,17 +1061,9 @@ function AdminApp() {
                     </tr>
                   </thead>
                   <tbody>
-                    {pages.map((page) => (
-                      <tr key={page.id}>
-                        <td>{page.title}</td>
-                        <td>/{page.slug}</td>
-                        <td>
-                          <span className={`status-badge ${page.isActive ? "status-badge--active" : "status-badge--disabled"}`}>
-                            {page.isActive ? "Active" : "Disabled"}
-                          </span>
-                        </td>
-                        <td>{page.amountMode}</td>
-                        <td>
+                    {pages.map((page) => {
+                      const actionButtons = (
+                        <>
                           <button
                             className="tiny-btn"
                             onClick={() => handleCopy(page.id)}
@@ -1097,7 +1091,7 @@ function AdminApp() {
                               <button
                                 className="tiny-btn"
                                 onClick={() => fetchVersions(page.id)}
-                                aria-label={`View versions for ${page.title}`}
+                                aria-label={`${t("viewVersionsFor")} ${page.title}`}
                               >
                                 {t("versions")}
                               </button>
@@ -1105,7 +1099,7 @@ function AdminApp() {
                                 <button
                                   className="tiny-btn"
                                   onClick={() => publishDraft(page.id)}
-                                  aria-label={`Publish draft for ${page.title}`}
+                                  aria-label={`${t("publishDraftFor")} ${page.title}`}
                                 >
                                   {t("publishDraft")}
                                 </button>
@@ -1113,21 +1107,50 @@ function AdminApp() {
                               <button
                                 className="tiny-btn"
                                 onClick={() => rollbackLatest(page.id)}
-                                aria-label={`Rollback ${page.title} to previous version`}
+                                aria-label={`${t("rollbackPageToPrevious")} ${page.title}`}
                               >
                                 {t("rollback")}
                               </button>
                             </>
                           )}
+                        </>
+                      );
+
+                      return (
+                      <tr key={page.id}>
+                        <td>{page.title}</td>
+                        <td>/{page.slug}</td>
+                        <td>
+                          <span className={`status-badge ${page.isActive ? "status-badge--active" : "status-badge--disabled"}`}>
+                            {page.isActive ? t("active") : t("disabled")}
+                          </span>
+                        </td>
+                        <td>{page.amountMode}</td>
+                        <td className="page-actions-cell">
+                          <div className="page-actions-desktop">{actionButtons}</div>
+                          <div className="page-actions-mobile">
+                            <button
+                              className="tiny-btn mobile-actions-trigger"
+                              onClick={() => setMobileActionsPageId((prev) => (prev === page.id ? null : page.id))}
+                              aria-expanded={mobileActionsPageId === page.id}
+                              aria-label={`${t("moreActions")} ${page.title}`}
+                            >
+                              {mobileActionsPageId === page.id ? t("hideActions") : t("moreActions")}
+                            </button>
+                            {mobileActionsPageId === page.id && (
+                              <div className="mobile-actions-panel">{actionButtons}</div>
+                            )}
+                          </div>
                         </td>
                       </tr>
-                    ))}
+                    );
+                    })}
                   </tbody>
                 </table>
               </div>
               {Object.entries(pageVersions).map(([pageId, versions]) => (
                 <div key={pageId} className="versions-block">
-                  <h4>Versions for page {pages.find((p) => p.id === pageId)?.title || pageId}</h4>
+                  <h4>{t("versionsForPage")} {pages.find((p) => p.id === pageId)?.title || pageId}</h4>
                   <ul>
                     {versions.slice(0, 5).map((v) => (
                       <li key={`${pageId}-${v.versionNumber}`}>
@@ -1189,7 +1212,7 @@ function AdminApp() {
                     type="url"
                     value={pageForm.logoUrl}
                     onChange={(e) => setPageForm((p) => ({ ...p, logoUrl: e.target.value }))}
-                    placeholder="https://example.com/logo.png"
+                    placeholder={t("logoUrlPlaceholder")}
                   />
                 </div>
                 <div className="field-group">
@@ -1291,18 +1314,18 @@ function AdminApp() {
                 </div>
                 <div className="field-builder-header">
                   <span>{t("customFields", { count: customFieldsBuilder.length })}</span>
-                  <button type="button" className="tiny-btn" onClick={addBuilderField} aria-label="Add custom field">+ Add field</button>
+                  <button type="button" className="tiny-btn" onClick={addBuilderField} aria-label={t("addCustomField")}>+ {t("addField")}</button>
                 </div>
                 {customFieldsBuilder.map((field, idx) => (
                   <div key={field.id} className="field-builder-row">
                     <input
-                      aria-label={`Custom field ${idx + 1} label`}
+                      aria-label={`${t("customField")} ${idx + 1} ${t("label")}`}
                       placeholder={t("fieldLabel")}
                       value={field.label}
                       onChange={(e) => updateBuilderField(idx, "label", e.target.value)}
                     />
                     <select
-                      aria-label={`Custom field ${idx + 1} type`}
+                      aria-label={`${t("customField")} ${idx + 1} ${t("type")}`}
                       value={field.type}
                       onChange={(e) => updateBuilderField(idx, "type", e.target.value)}
                     >
@@ -1314,7 +1337,7 @@ function AdminApp() {
                     </select>
                     {field.type === "dropdown" && (
                       <input
-                        aria-label={`Custom field ${idx + 1} dropdown options`}
+                        aria-label={`${t("customField")} ${idx + 1} ${t("dropdownOptions")}`}
                         placeholder={t("optionsCommaSeparated")}
                         value={field.options}
                         onChange={(e) => updateBuilderField(idx, "options", e.target.value)}
@@ -1325,7 +1348,7 @@ function AdminApp() {
                         type="checkbox"
                         checked={field.required}
                         onChange={(e) => updateBuilderField(idx, "required", e.target.checked)}
-                        aria-label={`${field.label || `Field ${idx + 1}`} required`}
+                        aria-label={`${field.label || `${t("field")} ${idx + 1}`} ${t("required").toLowerCase()}`}
                       />
                       {t("required")}
                     </label>
@@ -1347,7 +1370,7 @@ function AdminApp() {
                       type="button"
                       className="tiny-btn"
                       onClick={() => removeBuilderField(idx)}
-                      aria-label={`Remove ${field.label || `field ${idx + 1}`}`}
+                      aria-label={`${t("remove")} ${field.label || `${t("field")} ${idx + 1}`}`}
                     >{t("remove")}</button>
                   </div>
                 ))}
@@ -1407,16 +1430,16 @@ function AdminApp() {
                   <p>{t("quickPaymentPage")}</p>
                 </header>
                 <div className="preview-body">
-                  <h4>{pageForm.title || "Your page title"}</h4>
-                  <p>{pageForm.subtitle || "Your subtitle appears here."}</p>
+                  <h4>{pageForm.title || t("yourPageTitle")}</h4>
+                  <p>{pageForm.subtitle || t("yourSubtitleHere")}</p>
                   <div className="preview-banner">{pageForm.headerMessage}</div>
                   <label>
-                    Payment amount
+                    {t("paymentAmount")}
                     <input readOnly value={`$${Number(pageForm.fixedAmount || 0).toFixed(2)}`} />
                   </label>
                   <label>
                     Email
-                    <input readOnly value="payer@example.com" />
+                    <input readOnly value={t("payerEmailExample")} />
                   </label>
                   <button type="button">{t("payNow")}</button>
                   <small>{pageForm.footerMessage}</small>
@@ -1437,7 +1460,7 @@ function AdminApp() {
           ) : (
             <section className="panel">
               <h3>{t("recentTransactions")}</h3>
-              <div className="txn-filters" role="group" aria-label="Transaction filters">
+              <div className="txn-filters" role="group" aria-label={t("transactionFilters")}>
                 <label>
                   {t("status")}
                   <select
