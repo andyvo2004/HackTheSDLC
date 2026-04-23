@@ -1,0 +1,24 @@
+{
+  "expo": {
+    "name": "QPP Mobile",
+    "slug": "qpp-mobile-wrapper",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "splash": {
+      "resizeMode": "contain",
+      "backgroundColor": "#031b3b"
+    },
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#031b3b"
+      }
+    },
+    "extra": {
+      "webAppUrl": "http://localhost:5173"
+    }
+  }
+}
