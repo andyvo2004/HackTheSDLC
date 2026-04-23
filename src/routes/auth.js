@@ -290,18 +290,27 @@ authRouter.post("/dev-login", async (req, res, next) => {
     }
 
     const email = "admin@example.com";
-    const existing = await db.get("SELECT id, email, role FROM admin_users WHERE email = ?", [email]);
+    const { data: existing, error: existingError } = await supabaseAdmin
+      .from("admin_users")
+      .select("id,email,role")
+      .eq("email", email)
+      .maybeSingle();
+    if (existingError) throw existingError;
     let user = existing;
 
     if (!user) {
       const id = uuidv4();
       const createdAt = new Date().toISOString();
-      await db.run(
-        `INSERT INTO admin_users
-         (id, email, password_hash, role, company_name, company_logo_url, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`,
-        [id, email, SUPABASE_PASSWORD_MARKER, "owner", "Demo Company", null, createdAt],
-      );
+      const { error: insertError } = await supabaseAdmin.from("admin_users").insert({
+        id,
+        email,
+        password_hash: SUPABASE_PASSWORD_MARKER,
+        role: "owner",
+        company_name: "Demo Company",
+        company_logo_url: null,
+        created_at: createdAt,
+      });
+      if (insertError) throw insertError;
       user = { id, email, role: "owner" };
     }
 
