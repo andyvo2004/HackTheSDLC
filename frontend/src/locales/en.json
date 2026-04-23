@@ -241,5 +241,7 @@
   "statusValue_pending": "Pending",
   "statusValue_processing": "Processing",
   "statusValue_canceled": "Canceled",
-  "statusValue_requires_action": "Requires action"
+  "statusValue_requires_action": "Requires action",
+  "paymentMethod": "Payment method",
+  "achSubmissionReceived": "ACH authorization received. We will continue processing your bank transfer securely and email confirmation shortly."
 }
