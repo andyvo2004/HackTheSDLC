@@ -8,6 +8,32 @@ export default function ActivityFeed({ authToken }) {
   const esRef = useRef(null);
 
   useEffect(() => {
+    let reconnectTimer = null;
+
+    async function loadRecentActivity() {
+      try {
+        const res = await fetch(`${API_BASE}/admin/reports/transactions`, {
+          headers: { Authorization: `Bearer ${authToken}` },
+        });
+        if (!res.ok) return;
+        const rows = await res.json();
+        const mapped = rows
+          .filter((r) => r.status === "success")
+          .slice(0, 10)
+          .map((r) => ({
+            transaction_id: r.id,
+            payer_name: r.payerName || "Payer",
+            amount: Number(r.amount || 0),
+            currency: "usd",
+            page_title: r.page?.title || "Payment page",
+            created_at: r.createdAt,
+          }));
+        setEvents(mapped);
+      } catch {
+        // Non-blocking fallback; SSE may still populate feed.
+      }
+    }
+
     function connect() {
       setStatus("connecting");
       const es = new EventSource(`${API_BASE}/api/feed?token=${authToken}`);
@@ -25,13 +51,15 @@ export default function ActivityFeed({ authToken }) {
       es.onerror = () => {
         setStatus("reconnecting");
         es.close();
-        setTimeout(connect, 5000);
+        reconnectTimer = setTimeout(connect, 5000);
       };
     }
 
+    loadRecentActivity();
     connect();
 
     return () => {
+      if (reconnectTimer) clearTimeout(reconnectTimer);
       if (esRef.current) esRef.current.close();
     };
   }, [authToken]);
