@@ -796,6 +796,14 @@ function AdminApp() {
     () => ["all", ...new Set(transactions.map((txn) => txn.paymentMethod).filter(Boolean))],
     [transactions],
   );
+  const collectionVelocityValues = useMemo(() => {
+    const trend = insights?.trend || [];
+    if (trend.length >= 2) {
+      return trend.map((point) => Number(point.revenue || 0));
+    }
+    const avg = Number(summary?.averagePaymentAmount || 10);
+    return [avg, avg * 1.2, avg * 0.85, avg * 1.45, avg * 1.18, avg * 1.7];
+  }, [insights, summary]);
   const translateMethod = (method) => {
     const normalized = String(method || "").toLowerCase();
     return t(`paymentMethod_${normalized}`, { defaultValue: method });
@@ -947,16 +955,7 @@ function AdminApp() {
                     <h3>{t("collectionVelocity")}</h3>
                     <p className="subtle">{t("collectionVelocityDesc")}</p>
                   </div>
-                  <MiniAreaChart
-                    values={[
-                      Number(summary?.averagePaymentAmount || 10),
-                      Number(summary?.averagePaymentAmount || 10) * 1.2,
-                      Number(summary?.averagePaymentAmount || 10) * 0.85,
-                      Number(summary?.averagePaymentAmount || 10) * 1.45,
-                      Number(summary?.averagePaymentAmount || 10) * 1.18,
-                      Number(summary?.averagePaymentAmount || 10) * 1.7,
-                    ]}
-                  />
+                  <MiniAreaChart values={collectionVelocityValues} />
                 </section>
                 <section className="panel">
                   <h3>{t("paymentMethodMix")}</h3>
