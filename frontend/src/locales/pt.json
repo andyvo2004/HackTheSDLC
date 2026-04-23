@@ -61,5 +61,12 @@
   "statusValue_pending": "Pendente",
   "statusValue_processing": "Processando",
   "statusValue_canceled": "Cancelado",
-  "statusValue_requires_action": "Requer acao"
+  "statusValue_requires_action": "Requer acao",
+  "amount": "Valor",
+  "status": "Status",
+  "method": "Metodo",
+  "payer": "Pagador",
+  "created": "Criado em",
+  "allStatuses": "Todos os status",
+  "allMethods": "Todos os metodos"
 }

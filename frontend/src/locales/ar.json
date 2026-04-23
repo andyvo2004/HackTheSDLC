@@ -61,5 +61,12 @@
   "statusValue_pending": "قيد الانتظار",
   "statusValue_processing": "قيد المعالجة",
   "statusValue_canceled": "ملغى",
-  "statusValue_requires_action": "يتطلب اجراء"
+  "statusValue_requires_action": "يتطلب اجراء",
+  "amount": "المبلغ",
+  "status": "الحالة",
+  "method": "الطريقة",
+  "payer": "الدافع",
+  "created": "تاريخ الإنشاء",
+  "allStatuses": "كل الحالات",
+  "allMethods": "كل الطرق"
 }

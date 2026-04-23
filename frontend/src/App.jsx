@@ -975,6 +975,10 @@ function AdminApp() {
     const normalized = String(method || "").toLowerCase();
     return t(`paymentMethod_${normalized}`, { defaultValue: method });
   };
+  const localeCode = lang === "en" ? "en-US" : lang;
+  const formatCurrency = (value) =>
+    new Intl.NumberFormat(localeCode, { style: "currency", currency: "USD" }).format(Number(value || 0));
+  const formatDateTime = (value) => new Date(value).toLocaleString(localeCode);
   const translateStatus = (status) => {
     const normalized = String(status || "").toLowerCase();
     return t(`statusValue_${normalized}`, { defaultValue: status });
@@ -1704,7 +1708,7 @@ function AdminApp() {
                   <tbody>
                     {filteredTransactions.map((txn) => (
                       <tr key={txn.id}>
-                        <td>${Number(txn.amount).toFixed(2)}</td>
+                        <td>{formatCurrency(txn.amount)}</td>
                         <td>
                           <span className={`status-badge status-badge--${txn.status || "pending"}`}>
                             {translateStatus(txn.status || "pending")}
@@ -1712,7 +1716,7 @@ function AdminApp() {
                         </td>
                         <td>{translateMethod(txn.paymentMethod)}</td>
                         <td>{txn.payerEmail || t("notAvailable")}</td>
-                        <td>{new Date(txn.createdAt).toLocaleString()}</td>
+                        <td>{formatDateTime(txn.createdAt)}</td>
                       </tr>
                     ))}
                   </tbody>

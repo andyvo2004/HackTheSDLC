@@ -61,5 +61,12 @@
   "statusValue_pending": "В ожидании",
   "statusValue_processing": "Обработка",
   "statusValue_canceled": "Отменено",
-  "statusValue_requires_action": "Требуется действие"
+  "statusValue_requires_action": "Требуется действие",
+  "amount": "Сумма",
+  "status": "Статус",
+  "method": "Метод",
+  "payer": "Плательщик",
+  "created": "Создано",
+  "allStatuses": "Все статусы",
+  "allMethods": "Все методы"
 }

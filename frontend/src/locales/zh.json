@@ -61,5 +61,12 @@
   "statusValue_pending": "待处理",
   "statusValue_processing": "处理中",
   "statusValue_canceled": "已取消",
-  "statusValue_requires_action": "需要操作"
+  "statusValue_requires_action": "需要操作",
+  "amount": "金额",
+  "status": "状态",
+  "method": "方式",
+  "payer": "付款人",
+  "created": "创建时间",
+  "allStatuses": "全部状态",
+  "allMethods": "全部方式"
 }

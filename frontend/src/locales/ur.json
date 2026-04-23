@@ -61,5 +61,12 @@
   "statusValue_pending": "زیر التوا",
   "statusValue_processing": "پروسیسنگ",
   "statusValue_canceled": "منسوخ",
-  "statusValue_requires_action": "کارروائی درکار"
+  "statusValue_requires_action": "کارروائی درکار",
+  "amount": "رقم",
+  "status": "اسٹیٹس",
+  "method": "طریقہ",
+  "payer": "ادائیگی کنندہ",
+  "created": "تخلیق کا وقت",
+  "allStatuses": "تمام اسٹیٹس",
+  "allMethods": "تمام طریقے"
 }

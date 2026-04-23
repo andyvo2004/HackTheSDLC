@@ -61,5 +61,12 @@
   "statusValue_pending": "लंबित",
   "statusValue_processing": "प्रोसेस हो रहा है",
   "statusValue_canceled": "रद्द",
-  "statusValue_requires_action": "कार्रवाई आवश्यक"
+  "statusValue_requires_action": "कार्रवाई आवश्यक",
+  "amount": "राशि",
+  "status": "स्थिति",
+  "method": "विधि",
+  "payer": "भुगतानकर्ता",
+  "created": "बनाया गया",
+  "allStatuses": "सभी स्थितियां",
+  "allMethods": "सभी विधियां"
 }
