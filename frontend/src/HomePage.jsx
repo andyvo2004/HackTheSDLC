@@ -55,18 +55,21 @@ export default function HomePage() {
     ],
     [],
   );
-  const logoPlaceholders = useMemo(
+  const companies = useMemo(
     () => [
-      "Acme Co",
-      "Northstar",
-      "Vertex Labs",
-      "Summit",
-      "Aperture",
-      "Lumen",
-      "Pioneer",
-      "Atlas",
+      { name: "McDonald's", logo: "https://cdn.simpleicons.org/mcdonalds" },
+      { name: "Burger King", logo: "https://cdn.simpleicons.org/burgerking" },
+      { name: "KFC", logo: "https://cdn.simpleicons.org/kfc" },
+      { name: "Starbucks", logo: "https://cdn.simpleicons.org/starbucks" },
+      { name: "Shopify", logo: "https://cdn.simpleicons.org/shopify" },
+      { name: "Etsy", logo: "https://cdn.simpleicons.org/etsy" },
+      { name: "eBay", logo: "https://cdn.simpleicons.org/ebay" },
+      { name: "Airbnb", logo: "https://cdn.simpleicons.org/airbnb" },
+      { name: "Uber", logo: "https://cdn.simpleicons.org/uber" },
+      { name: "DoorDash", logo: "https://cdn.simpleicons.org/doordash" },
+      { name: "Etsy", logo: "https://cdn.simpleicons.org/etsy" },
     ],
-    [],
+    []
   );
 
   useEffect(() => {
@@ -172,13 +175,16 @@ export default function HomePage() {
               <p>Trusted by teams like</p>
               <div className="logo-track-mask">
                 <div className="logo-track logo-track-animate">
-                  {[...logoPlaceholders, ...logoPlaceholders].map(
-                    (name, index) => (
-                      <div key={`${name}-${index}`} className="logo-pill">
-                        {name}
-                      </div>
-                    ),
-                  )}
+                  {[...companies, ...companies].map((company, index) => (
+                    <div key={`${company.name}-${index}`} className="logo-pill">
+                      <img
+                        src={company.logo}
+                        alt={company.name}
+                        className="logo-img"
+                      />
+                      <span>{company.name}</span>
+                    </div>
+                  ))} 
                 </div>
               </div>
             </div>
