@@ -70,14 +70,28 @@ body.light-mode {
     0 2px 8px rgba(15, 99, 255, 0.08);
 }
 
+.auth-brand-logo {
+  display: block;
+  height: 48px;
+  width: auto;
+  margin: 0 auto 0.5rem;
+  object-fit: contain;
+}
+
+.auth-card .eyebrow {
+  text-align: center;
+}
+
 .auth-card h1 {
   margin: 0.4rem 0 0.5rem;
   font-size: 2rem;
+  text-align: center;
 }
 
 .auth-subtitle {
   color: var(--text-secondary);
   margin-bottom: 1.2rem;
+  text-align: center;
 }
 
 .auth-submit-btn {
@@ -140,6 +154,37 @@ body.light-mode {
 
 .auth-switch-link:hover {
   text-decoration: underline;
+}
+
+.approval-list {
+  display: grid;
+  gap: 0.8rem;
+  margin-top: 1rem;
+}
+
+.approval-item {
+  display: grid;
+  grid-template-columns: 52px 1fr auto;
+  gap: 0.85rem;
+  align-items: center;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 0.8rem;
+  background: rgba(17, 34, 69, 0.24);
+}
+
+.approval-logo {
+  width: 52px;
+  height: 52px;
+  border-radius: 12px;
+  object-fit: cover;
+  border: 1px solid var(--border);
+  background: #fff;
+}
+
+.approval-item .auth-submit-btn {
+  width: auto;
+  padding: 0.6rem 1rem;
 }
 
 .app-shell {

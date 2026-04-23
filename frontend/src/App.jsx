@@ -23,6 +23,7 @@ import ActivityFeed from "./components/ActivityFeed.jsx";
 import { supabase } from "./lib/supabaseClient.js";
 import HomePage from "./HomePage.jsx";
 import googleLogo from "./assets/google-logo.png";
+import qppPlainLogo from "./assets/qpp-plain.png";
 
 const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:4000";
 const STRIPE_KEY = import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY || "";
@@ -670,9 +671,8 @@ function AuthPage({ mode }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [authNotice, setAuthNotice] = useState("");
-  const [signupRole, setSignupRole] = useState("");
-  const [needsGoogleRoleCompletion, setNeedsGoogleRoleCompletion] =
-    useState(false);
+  const [companyName, setCompanyName] = useState("");
+  const [companyLogoDataUrl, setCompanyLogoDataUrl] = useState("");
   const [loginForm, setLoginForm] = useState({
     email: "",
     password: "",
@@ -684,7 +684,7 @@ function AuthPage({ mode }) {
     return <Navigate to="/dashboard" replace />;
   }
 
-  const exchangeSupabaseSession = async (selectedRole = "") => {
+  const exchangeSupabaseSession = async () => {
     const {
       data: { session },
     } = await supabase.auth.getSession();
@@ -693,12 +693,32 @@ function AuthPage({ mode }) {
       method: "POST",
       body: {
         accessToken: session.access_token,
-        ...(selectedRole ? { role: selectedRole } : {}),
       },
     });
     localStorage.setItem("qpp_token", exchange.token);
     navigate("/dashboard", { replace: true });
     return true;
+  };
+
+  const queueCompanyRequest = async (authMethod) => {
+    if (!companyName.trim()) throw new Error("Company name is required.");
+    if (!companyLogoDataUrl) throw new Error("Company logo is required.");
+    if (!loginForm.email.trim()) throw new Error("Email address is required.");
+    if (!loginForm.password.trim()) throw new Error("Password is required.");
+
+    await apiRequest("/auth/signup", {
+      method: "POST",
+      body: {
+        companyName: companyName.trim(),
+        companyLogoUrl: companyLogoDataUrl,
+        email: loginForm.email.trim().toLowerCase(),
+        password: loginForm.password,
+        authMethod,
+      },
+    });
+    setCompanyName("");
+    setCompanyLogoDataUrl("");
+    setLoginForm({ email: "", password: "" });
   };
 
   const handleLogin = async (e) => {
@@ -707,16 +727,9 @@ function AuthPage({ mode }) {
     setError("");
     setAuthNotice("");
     try {
-      const { error: supabaseError } = await supabase.auth.signInWithPassword({
-        email: loginForm.email,
-        password: loginForm.password,
-      });
-      if (supabaseError) {
-        throw supabaseError;
-      }
       const data = await apiRequest("/auth/login", {
         method: "POST",
-        body: loginForm,
+        body: { email: loginForm.email.trim(), password: loginForm.password },
       });
       localStorage.setItem("qpp_token", data.token);
       navigate("/dashboard", { replace: true });
@@ -733,19 +746,9 @@ function AuthPage({ mode }) {
     setError("");
     setAuthNotice("");
     try {
-      if (!signupRole) {
-        throw new Error("Please select an account type.");
-      }
-      await apiRequest("/auth/signup", {
-        method: "POST",
-        body: {
-          email: loginForm.email,
-          password: loginForm.password,
-          role: signupRole,
-        },
-      });
+      await queueCompanyRequest("password");
       setAuthNotice(
-        "Account created. Check your email to confirm, then sign in.",
+        "Request submitted. A super admin will review and approve your company account.",
       );
     } catch (err) {
       setError(err.message);
@@ -759,6 +762,13 @@ function AuthPage({ mode }) {
     setError("");
     setAuthNotice("");
     try {
+      if (isSignup) {
+        await queueCompanyRequest("google");
+        setAuthNotice(
+          "Google-based request submitted. A super admin will review your company account.",
+        );
+        return;
+      }
       const { error: oauthError } = await supabase.auth.signInWithOAuth({
         provider: "google",
         options: {
@@ -772,29 +782,11 @@ function AuthPage({ mode }) {
     }
   };
 
-  const handleCompleteGoogleSignup = async () => {
-    setLoading(true);
-    setError("");
-    setAuthNotice("");
-    try {
-      if (!signupRole) {
-        throw new Error("Please select an account type before continuing.");
-      }
-      const exchanged = await exchangeSupabaseSession(signupRole);
-      if (!exchanged) {
-        throw new Error(
-          "Google session not found. Please click Continue with Google first.",
-        );
-      }
-      setNeedsGoogleRoleCompletion(false);
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
   useEffect(() => {
+    if (isSignup) {
+      setLoading(false);
+      return;
+    }
     let cancelled = false;
     async function tryExchange() {
       try {
@@ -803,14 +795,7 @@ function AuthPage({ mode }) {
         if (exchanged) return;
       } catch (err) {
         if (cancelled) return;
-        if (err.code === "ROLE_REQUIRED") {
-          setNeedsGoogleRoleCompletion(true);
-          setAuthNotice(
-            "Google account found. Select account type to finish setup.",
-          );
-          if (!isSignup) navigate("/signup", { replace: true });
-          return;
-        }
+        if (err.code === "APPROVAL_REQUIRED") return;
         setError(err.message);
       } finally {
         if (!cancelled) setLoading(false);
@@ -825,23 +810,63 @@ function AuthPage({ mode }) {
   return (
     <main className="auth-shell">
       <section className="auth-card">
+        <img src={qppPlainLogo} alt="QPP" className="auth-brand-logo" />
         <p className="eyebrow">Waystar Inspired Experience</p>
-        <h1>{isSignup ? "Create Admin Account" : "Admin Sign In"}</h1>
+        <h1>{isSignup ? "Create Company Account" : "Sign In"}</h1>
         <p className="auth-subtitle">
           {isSignup
-            ? "Choose your account type, then confirm your email to continue."
+            ? "Submit your company details for super admin approval."
             : "Sign in to manage branded payment pages and reporting."}
         </p>
         <form
           className="form-grid"
           onSubmit={isSignup ? handleSignup : handleLogin}
-          aria-label={isSignup ? "Admin sign up" : "Admin sign in"}
+          aria-label={isSignup ? "Company sign up" : "Sign in"}
         >
+          {isSignup && (
+            <>
+              <div className="field-group">
+                <label htmlFor="company-name">Company name</label>
+                <input
+                  id="company-name"
+                  type="text"
+                  value={companyName}
+                  onChange={(e) => setCompanyName(e.target.value)}
+                  required
+                  aria-required="true"
+                />
+              </div>
+              <div className="field-group">
+                <label htmlFor="company-logo">Company logo</label>
+                <input
+                  id="company-logo"
+                  type="file"
+                  accept="image/*"
+                  required
+                  aria-required="true"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (!file) {
+                      setCompanyLogoDataUrl("");
+                      return;
+                    }
+                    const reader = new FileReader();
+                    reader.onload = () => {
+                      setCompanyLogoDataUrl(String(reader.result || ""));
+                    };
+                    reader.readAsDataURL(file);
+                  }}
+                />
+              </div>
+            </>
+          )}
           <div className="field-group">
-            <label htmlFor="login-email">Email address</label>
+            <label htmlFor="login-email">
+              {isSignup ? "Email address" : "Email or username"}
+            </label>
             <input
               id="login-email"
-              type="email"
+              type={isSignup ? "email" : "text"}
               value={loginForm.email}
               onChange={(e) =>
                 setLoginForm((p) => ({ ...p, email: e.target.value }))
@@ -863,53 +888,25 @@ function AuthPage({ mode }) {
               aria-required="true"
             />
           </div>
-          {isSignup && (
-            <div className="field-group">
-              <label htmlFor="signup-role">Account type *</label>
-              <select
-                id="signup-role"
-                value={signupRole}
-                onChange={(e) => setSignupRole(e.target.value)}
-                required
-                aria-required="true"
-              >
-                <option value="">Select account type</option>
-                <option value="viewer">Viewer</option>
-                <option value="editor">Editor</option>
-                <option value="owner">Owner</option>
-              </select>
-            </div>
-          )}
           <button type="submit" className="auth-submit-btn" disabled={loading}>
             {loading
               ? isSignup
-                ? "Creating account..."
+                ? "Submitting request..."
                 : "Signing in..."
               : isSignup
-                ? "Create account"
+                ? "Create account request"
                 : "Sign in"}
           </button>
         </form>
-        {needsGoogleRoleCompletion ? (
-          <button
-            type="button"
-            className="auth-google-btn"
-            onClick={handleCompleteGoogleSignup}
-            disabled={loading}
-          >
-            Finish Google signup
-          </button>
-        ) : (
-          <button
-            type="button"
-            className="auth-google-btn"
-            onClick={handleGoogleAuth}
-            disabled={loading}
-          >
-            <img src={googleLogo} alt="" className="google-icon" aria-hidden="true" />
-            Continue with Google
-          </button>
-        )}
+        <button
+          type="button"
+          className="auth-google-btn"
+          onClick={handleGoogleAuth}
+          disabled={loading}
+        >
+          <img src={googleLogo} alt="" className="google-icon" aria-hidden="true" />
+          {isSignup ? "Submit with Google" : "Continue with Google"}
+        </button>
         <p className="auth-switch-row">
           {isSignup ? "Already have an account?" : "Need an account?"}{" "}
           <Link
@@ -933,6 +930,7 @@ function AuthPage({ mode }) {
 function AdminApp() {
   const [token, setToken] = useState(localStorage.getItem("qpp_token") || "");
   const [user, setUser] = useState(null);
+  const [companyRequests, setCompanyRequests] = useState([]);
   const [pages, setPages] = useState([]);
   const [summary, setSummary] = useState(null);
   const [transactions, setTransactions] = useState([]);
@@ -997,6 +995,15 @@ function AdminApp() {
     () => user && ["owner", "editor"].includes(user.role),
     [user],
   );
+  const isSuperAdmin = user?.role === "super_admin";
+
+  const fetchCompanyRequests = async (activeToken = token) => {
+    if (!activeToken) return;
+    const requests = await apiRequest("/auth/company-requests", {
+      token: activeToken,
+    });
+    setCompanyRequests(requests);
+  };
 
   const fetchDashboard = async (activeToken) => {
     const authToken = activeToken || token;
@@ -1004,8 +1011,18 @@ function AdminApp() {
     setLoading(true);
     setError("");
     try {
-      const [me, pageList, reportSummary, txns] = await Promise.all([
-        apiRequest("/auth/me", { token: authToken }),
+      const me = await apiRequest("/auth/me", { token: authToken });
+      setUser(me);
+      if (me.role === "super_admin") {
+        setView("approvals");
+        await fetchCompanyRequests(authToken);
+        setPages([]);
+        setSummary(null);
+        setTransactions([]);
+        setInsights(null);
+        return;
+      }
+      const [pageList, reportSummary, txns] = await Promise.all([
         apiRequest("/admin/pages", { token: authToken }),
         apiRequest("/admin/reports/summary", { token: authToken }),
         apiRequest("/admin/reports/transactions", { token: authToken }),
@@ -1013,7 +1030,6 @@ function AdminApp() {
       const insightData = await apiRequest("/admin/reports/insights", {
         token: authToken,
       });
-      setUser(me);
       setPages(pageList);
       setSummary(reportSummary);
       setTransactions(txns.slice(0, 8));
@@ -1028,6 +1044,18 @@ function AdminApp() {
   useEffect(() => {
     if (token) fetchDashboard(token);
   }, [token]);
+
+  const handleApproveRequest = async (requestId) => {
+    try {
+      await apiRequest(`/auth/company-requests/${requestId}/approve`, {
+        method: "POST",
+        token,
+      });
+      await fetchCompanyRequests(token);
+    } catch (err) {
+      setError(err.message);
+    }
+  };
 
   const handleCreatePage = async (e) => {
     e.preventDefault();
@@ -1180,6 +1208,71 @@ function AdminApp() {
   };
 
   if (!token) return <Navigate to="/login" replace />;
+
+  if (isSuperAdmin) {
+    return (
+      <div className="app-shell">
+        <aside className="sidebar">
+          <h2>Waystar QPP</h2>
+          <p className="role-pill">super admin</p>
+          <nav aria-label="Dashboard navigation">
+            <button className="nav-btn active" aria-current="page">
+              Approvals
+            </button>
+          </nav>
+          <button className="logout-btn" onClick={handleLogout} aria-label="Sign out">
+            Log out
+          </button>
+        </aside>
+        <main className="content-shell">
+          <header>
+            <p className="eyebrow">Platform Account Governance</p>
+            <h1>Review and approve company account requests</h1>
+          </header>
+          {error && (
+            <div role="alert" aria-live="assertive" className="error">
+              {error}
+            </div>
+          )}
+          <section className="panel">
+            <h3>Pending company account requests</h3>
+            {companyRequests.length === 0 ? (
+              <p className="subtle">
+                No pending requests. New company signups will appear here.
+              </p>
+            ) : (
+              <div className="approval-list">
+                {companyRequests.map((request) => (
+                  <article key={request.id} className="approval-item">
+                    <img
+                      src={request.companyLogoUrl}
+                      alt={`${request.companyName} logo`}
+                      className="approval-logo"
+                    />
+                    <div>
+                      <strong>{request.companyName}</strong>
+                      <p className="subtle">{request.email}</p>
+                      <small className="subtle">
+                        Requested via {request.authMethod} on{" "}
+                        {new Date(request.createdAt).toLocaleString()}
+                      </small>
+                    </div>
+                    <button
+                      type="button"
+                      className="auth-submit-btn"
+                      onClick={() => handleApproveRequest(request.id)}
+                    >
+                      Approve
+                    </button>
+                  </article>
+                ))}
+              </div>
+            )}
+          </section>
+        </main>
+      </div>
+    );
+  }
 
   return (
     <div className="app-shell">
