@@ -327,6 +327,8 @@ function AdminApp() {
   const [pages, setPages] = useState([]);
   const [summary, setSummary] = useState(null);
   const [transactions, setTransactions] = useState([]);
+  const [insights, setInsights] = useState(null);
+  const [pageVersions, setPageVersions] = useState({});
   const [view, setView] = useState("overview");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -365,10 +367,12 @@ function AdminApp() {
         apiRequest("/admin/reports/summary", { token: authToken }),
         apiRequest("/admin/reports/transactions", { token: authToken }),
       ]);
+      const insightData = await apiRequest("/admin/reports/insights", { token: authToken });
       setUser(me);
       setPages(pageList);
       setSummary(reportSummary);
       setTransactions(txns.slice(0, 8));
+      setInsights(insightData);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -453,6 +457,41 @@ function AdminApp() {
     }
   };
 
+  const fetchVersions = async (pageId) => {
+    const versions = await apiRequest(`/admin/pages/${pageId}/versions`, { token });
+    setPageVersions((prev) => ({ ...prev, [pageId]: versions }));
+  };
+
+  const publishDraft = async (pageId) => {
+    try {
+      await apiRequest(`/admin/pages/${pageId}/publish`, { method: "POST", token });
+      await fetchDashboard(token);
+      await fetchVersions(pageId);
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  const rollbackLatest = async (pageId) => {
+    try {
+      const versions = pageVersions[pageId] || (await apiRequest(`/admin/pages/${pageId}/versions`, { token }));
+      const target = versions[1];
+      if (!target) {
+        setError("No prior version available to rollback.");
+        return;
+      }
+      await apiRequest(`/admin/pages/${pageId}/rollback`, {
+        method: "POST",
+        token,
+        body: { versionNumber: target.versionNumber },
+      });
+      await fetchDashboard(token);
+      await fetchVersions(pageId);
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
   const handleLogout = () => {
     localStorage.removeItem("qpp_token");
     setToken("");
@@ -511,7 +550,7 @@ function AdminApp() {
           <span />
         </div>
         <nav>
-          {["overview", "pages", "create", "transactions"].map((item) => (
+          {["overview", "insights", "pages", "create", "transactions"].map((item) => (
             <button
               key={item}
               className={view === item ? "nav-btn active" : "nav-btn"}
@@ -594,6 +633,84 @@ function AdminApp() {
           </>
         )}
 
+        {view === "insights" && (
+          loading ? (
+            <LoadingSkeleton />
+          ) : !insights ? (
+            <EmptyState title="No insights yet" message="Perform some payment activity to populate analytics." />
+          ) : (
+            <>
+              <section className="stats-grid">
+                <StatCard label="Page Views" value={insights.overview.totalViews.toLocaleString()} />
+                <StatCard
+                  label="Checkout Starts"
+                  value={insights.overview.totalTransactions.toLocaleString()}
+                />
+                <StatCard
+                  label="Successful Payments"
+                  value={insights.overview.successfulTransactions.toLocaleString()}
+                />
+              </section>
+              <section className="panel">
+                <h3>Conversion funnel</h3>
+                <div className="method-bars">
+                  <div className="method-row">
+                    <div className="method-meta">
+                      <span>View to Checkout</span>
+                      <strong>{(insights.funnel.viewToCheckoutRate * 100).toFixed(1)}%</strong>
+                    </div>
+                    <div className="bar-track">
+                      <span
+                        className="bar-fill"
+                        style={{ width: `${Math.max(4, insights.funnel.viewToCheckoutRate * 100)}%` }}
+                      />
+                    </div>
+                  </div>
+                  <div className="method-row">
+                    <div className="method-meta">
+                      <span>Checkout to Success</span>
+                      <strong>{(insights.funnel.checkoutToSuccessRate * 100).toFixed(1)}%</strong>
+                    </div>
+                    <div className="bar-track">
+                      <span
+                        className="bar-fill"
+                        style={{ width: `${Math.max(4, insights.funnel.checkoutToSuccessRate * 100)}%` }}
+                      />
+                    </div>
+                  </div>
+                </div>
+              </section>
+              <section className="panel">
+                <h3>Top page performance</h3>
+                <div className="table-wrap">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Page</th>
+                        <th>Views</th>
+                        <th>Transactions</th>
+                        <th>Success</th>
+                        <th>Revenue</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {insights.pagePerformance.slice(0, 8).map((p) => (
+                        <tr key={p.id}>
+                          <td>{p.title}</td>
+                          <td>{p.viewCount}</td>
+                          <td>{p.transactionCount}</td>
+                          <td>{p.successCount}</td>
+                          <td>${p.revenue.toFixed(2)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+            </>
+          )
+        )}
+
         {view === "pages" && (
           loading ? (
             <LoadingSkeleton />
@@ -627,12 +744,39 @@ function AdminApp() {
                           <button className="tiny-btn" onClick={() => handleCopy(page.id)}>
                             Copy URL
                           </button>
+                          {canEditPages && (
+                            <>
+                              <button className="tiny-btn" onClick={() => fetchVersions(page.id)}>
+                                Versions
+                              </button>
+                              {page.hasDraft && (
+                                <button className="tiny-btn" onClick={() => publishDraft(page.id)}>
+                                  Publish Draft
+                                </button>
+                              )}
+                              <button className="tiny-btn" onClick={() => rollbackLatest(page.id)}>
+                                Rollback
+                              </button>
+                            </>
+                          )}
                         </td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
+              {Object.entries(pageVersions).map(([pageId, versions]) => (
+                <div key={pageId} className="versions-block">
+                  <h4>Versions for page {pages.find((p) => p.id === pageId)?.title || pageId}</h4>
+                  <ul>
+                    {versions.slice(0, 5).map((v) => (
+                      <li key={`${pageId}-${v.versionNumber}`}>
+                        v{v.versionNumber} - {new Date(v.createdAt).toLocaleString()}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
             </section>
           )
         )}
@@ -720,6 +864,50 @@ function AdminApp() {
                 </label>
                 <button type="submit" disabled={loading || !canEditPages}>
                   {loading ? "Saving..." : "Create page"}
+                </button>
+                <button
+                  type="button"
+                  disabled={loading || !canEditPages}
+                  onClick={async () => {
+                    try {
+                      const targetPage = pages[0];
+                      if (!targetPage) {
+                        setError("Create a page first, then use Save as Draft.");
+                        return;
+                      }
+                      await apiRequest(`/admin/pages/${targetPage.id}?mode=draft`, {
+                        method: "PUT",
+                        token,
+                        body: {
+                          slug: targetPage.slug,
+                          title: pageForm.title || targetPage.title,
+                          subtitle: pageForm.subtitle,
+                          description: targetPage.description || "",
+                          logoUrl: targetPage.logoUrl || "",
+                          brandColor: pageForm.brandColor,
+                          headerMessage: pageForm.headerMessage,
+                          footerMessage: pageForm.footerMessage,
+                          amountMode: pageForm.amountMode,
+                          fixedAmount: Number(pageForm.fixedAmount),
+                          minAmount: targetPage.minAmount,
+                          maxAmount: targetPage.maxAmount,
+                          glCodes: pageForm.glCodes
+                            .split(",")
+                            .map((code) => code.trim())
+                            .filter(Boolean),
+                          emailTemplate: targetPage.emailTemplate || "",
+                          isActive: true,
+                          customFields: targetPage.customFields || [],
+                        },
+                      });
+                      await fetchDashboard(token);
+                      setView("pages");
+                    } catch (err) {
+                      setError(err.message);
+                    }
+                  }}
+                >
+                  Save as Draft (first page)
                 </button>
               </form>
             </section>

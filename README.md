@@ -81,6 +81,9 @@ See `.env.example`.
 - `PUT /admin/pages/:id` (editor/owner)
 - `PATCH /admin/pages/:id/status` (editor/owner)
 - `GET /admin/pages/:id/share` (public URL + iframe snippet + QR code data URL)
+- `GET /admin/pages/:id/versions` (published version history)
+- `POST /admin/pages/:id/publish` (publish saved draft)
+- `POST /admin/pages/:id/rollback` (rollback from a prior version)
 
 ### Public payment endpoints
 
@@ -99,6 +102,7 @@ See `.env.example`.
 - `GET /admin/reports/transactions?from=&to=&pageId=&status=&paymentMethod=`
 - `GET /admin/reports/summary`
 - `GET /admin/reports/transactions.csv?from=&to=&pageId=&status=&paymentMethod=`
+- `GET /admin/reports/insights` (funnel + trend + page performance)
 
 ### Admin user management (owner only)
 
@@ -131,6 +135,8 @@ See `.env.example`.
   - Transaction storage + field responses
   - SMTP confirmation email support (with local stub fallback)
   - Reporting summary + CSV export with active filters
+  - Insights analytics endpoint (funnel, trends, page performance)
+  - Draft/publish/rollback payment page versioning
 - Not yet implemented:
   - Full wallet/ACH client-side checkout UX and capability detection
   - Fine-grained per-page/team permissions

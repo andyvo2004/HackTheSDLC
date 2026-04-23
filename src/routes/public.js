@@ -35,6 +35,11 @@ publicRouter.get("/pay/:slug", async (req, res, next) => {
   try {
     const page = await db.get("SELECT * FROM payment_pages WHERE slug = ?", [req.params.slug]);
     if (!page || !page.is_active) return res.status(404).json({ error: "Payment page not found" });
+    await db.run("INSERT INTO page_views (id, page_id, visited_at) VALUES (?, ?, ?)", [
+      uuidv4(),
+      page.id,
+      new Date().toISOString(),
+    ]);
 
     const fields = await db.all(
       "SELECT * FROM custom_fields WHERE page_id = ? ORDER BY display_order ASC",

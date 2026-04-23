@@ -144,3 +144,81 @@ reportsRouter.get("/transactions.csv", async (req, res, next) => {
     next(err);
   }
 });
+
+reportsRouter.get("/insights", async (_req, res, next) => {
+  try {
+    const totals = await db.get(
+      `SELECT
+        COUNT(*) AS total_transactions,
+        SUM(CASE WHEN status='success' THEN 1 ELSE 0 END) AS successful_transactions,
+        SUM(CASE WHEN status='failed' THEN 1 ELSE 0 END) AS failed_transactions,
+        SUM(CASE WHEN status='pending' THEN 1 ELSE 0 END) AS pending_transactions,
+        SUM(CASE WHEN status='success' THEN amount ELSE 0 END) AS revenue
+       FROM transactions`,
+    );
+    const views = await db.get("SELECT COUNT(*) AS total_views FROM page_views");
+    const pages = await db.get("SELECT COUNT(*) AS total_pages FROM payment_pages");
+
+    const trend = await db.all(
+      `SELECT substr(created_at, 1, 10) AS day,
+              COUNT(*) AS transaction_count,
+              SUM(CASE WHEN status='success' THEN amount ELSE 0 END) AS revenue
+       FROM transactions
+       WHERE created_at >= datetime('now', '-14 day')
+       GROUP BY substr(created_at, 1, 10)
+       ORDER BY day ASC`,
+    );
+
+    const pagePerformance = await db.all(
+      `SELECT p.id, p.title, p.slug,
+              COUNT(DISTINCT v.id) AS view_count,
+              COUNT(DISTINCT t.id) AS transaction_count,
+              SUM(CASE WHEN t.status='success' THEN 1 ELSE 0 END) AS success_count,
+              SUM(CASE WHEN t.status='success' THEN t.amount ELSE 0 END) AS revenue
+       FROM payment_pages p
+       LEFT JOIN page_views v ON v.page_id = p.id
+       LEFT JOIN transactions t ON t.page_id = p.id
+       GROUP BY p.id, p.title, p.slug
+       ORDER BY revenue DESC`,
+    );
+
+    const totalViews = Number(views.total_views || 0);
+    const totalTx = Number(totals.total_transactions || 0);
+    const successfulTx = Number(totals.successful_transactions || 0);
+
+    return res.json({
+      overview: {
+        totalPages: Number(pages.total_pages || 0),
+        totalViews,
+        totalTransactions: totalTx,
+        successfulTransactions: successfulTx,
+        failedTransactions: Number(totals.failed_transactions || 0),
+        pendingTransactions: Number(totals.pending_transactions || 0),
+        revenue: Number(totals.revenue || 0),
+      },
+      funnel: {
+        viewed: totalViews,
+        checkoutStarted: totalTx,
+        successful: successfulTx,
+        viewToCheckoutRate: totalViews ? totalTx / totalViews : 0,
+        checkoutToSuccessRate: totalTx ? successfulTx / totalTx : 0,
+      },
+      trend: trend.map((t) => ({
+        day: t.day,
+        transactionCount: Number(t.transaction_count || 0),
+        revenue: Number(t.revenue || 0),
+      })),
+      pagePerformance: pagePerformance.map((p) => ({
+        id: p.id,
+        title: p.title,
+        slug: p.slug,
+        viewCount: Number(p.view_count || 0),
+        transactionCount: Number(p.transaction_count || 0),
+        successCount: Number(p.success_count || 0),
+        revenue: Number(p.revenue || 0),
+      })),
+    });
+  } catch (err) {
+    next(err);
+  }
+});
