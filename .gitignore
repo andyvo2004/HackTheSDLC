@@ -27,6 +27,8 @@ data/
 .tooling/
 .claude
 .cursor/
+.expo/
+mobile/.expo/
 
 # OS/editor noise
 .DS_Store
