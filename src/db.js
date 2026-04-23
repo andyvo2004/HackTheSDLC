@@ -128,6 +128,20 @@ export async function initDb() {
     )
   `);
 
+  await db.run(`
+    CREATE TABLE IF NOT EXISTS webhook_events (
+      id TEXT PRIMARY KEY,
+      processor TEXT NOT NULL,
+      event_type TEXT NOT NULL,
+      payment_intent_id TEXT,
+      received_at TEXT NOT NULL
+    )
+  `);
+
+  await db.run(
+    "CREATE UNIQUE INDEX IF NOT EXISTS idx_webhook_events_processor_id ON webhook_events(processor, id)",
+  );
+
   const txColumns = await db.all("PRAGMA table_info(transactions)");
   const hasStripeIntentId = txColumns.some((c) => c.name === "stripe_payment_intent_id");
   if (!hasStripeIntentId) {
