@@ -152,6 +152,7 @@ function PublicCheckoutForm({ slug, config, onResult }) {
   const [amount, setAmount] = useState(config.fixedAmount || 0);
   const [payerEmail, setPayerEmail] = useState("");
   const [payerName, setPayerName] = useState("");
+  const [paymentMethod, setPaymentMethod] = useState("card");
   const [customResponses, setCustomResponses] = useState({});
   const [achAuthorizationAccepted, setAchAuthorizationAccepted] = useState(false);
   const [fieldErrors, setFieldErrors] = useState({});
@@ -202,24 +203,37 @@ function PublicCheckoutForm({ slug, config, onResult }) {
           amount: Number(amount),
           payerEmail,
           payerName,
-          paymentMethod: "card",
+          paymentMethod,
           fieldResponses: customResponses,
           achAuthorizationAccepted,
         },
       });
 
-      const cardElement = elements.getElement(CardElement);
-      const confirmResult = await stripe.confirmCardPayment(payload.clientSecret, {
-        payment_method: {
-          card: cardElement,
-          billing_details: { email: payerEmail, name: payerName },
-        },
-      });
-      if (confirmResult.error) {
-      const msg = confirmResult.error.message || t("stripeConfirmationFailed");
-        setStripeError(msg);
-        setTimeout(() => stripeErrorRef.current?.focus(), 50);
-        throw new Error(msg);
+      if (paymentMethod === "card") {
+        const cardElement = elements.getElement(CardElement);
+        const confirmResult = await stripe.confirmCardPayment(payload.clientSecret, {
+          payment_method: {
+            card: cardElement,
+            billing_details: { email: payerEmail, name: payerName },
+          },
+        });
+        if (confirmResult.error) {
+          const msg = confirmResult.error.message || t("stripeConfirmationFailed");
+          setStripeError(msg);
+          setTimeout(() => stripeErrorRef.current?.focus(), 50);
+          throw new Error(msg);
+        }
+      }
+
+      if (paymentMethod === "ach") {
+        onResult({
+          type: "success",
+          message: t("achSubmissionReceived"),
+          transactionId: payload.transactionId,
+          payerEmail,
+          amount,
+        });
+        return;
       }
 
       const sync = await apiRequest(`/public/pay/${slug}/confirm`, {
@@ -386,19 +400,39 @@ function PublicCheckoutForm({ slug, config, onResult }) {
 
       <fieldset className="form-fieldset">
         <legend>{t("paymentDetails")}</legend>
-        <div className="checkbox-group">
-          <input
-            id="ach-auth"
-            type="checkbox"
-            checked={achAuthorizationAccepted}
-            onChange={(e) => setAchAuthorizationAccepted(e.target.checked)}
-          />
-          <label htmlFor="ach-auth">{t("achAuthorization")}</label>
+        <div className="field-group">
+          <label htmlFor="field-payment-method">{t("paymentMethod")}</label>
+          <select
+            id="field-payment-method"
+            value={paymentMethod}
+            onChange={(e) => {
+              const nextMethod = e.target.value;
+              setPaymentMethod(nextMethod);
+              if (nextMethod !== "ach") setAchAuthorizationAccepted(false);
+            }}
+          >
+            <option value="card">{t("paymentMethod_card")}</option>
+            <option value="ach">{t("paymentMethod_ach")}</option>
+          </select>
         </div>
-        <p id="card-element-label" className="card-label">{t("cardDetails")}</p>
-        <div className="stripe-box" aria-labelledby="card-element-label">
-          <CardElement options={{ hidePostalCode: false }} />
-        </div>
+        {paymentMethod === "ach" ? (
+          <div className="checkbox-group">
+            <input
+              id="ach-auth"
+              type="checkbox"
+              checked={achAuthorizationAccepted}
+              onChange={(e) => setAchAuthorizationAccepted(e.target.checked)}
+            />
+            <label htmlFor="ach-auth">{t("achAuthorization")}</label>
+          </div>
+        ) : (
+          <>
+            <p id="card-element-label" className="card-label">{t("cardDetails")}</p>
+            <div className="stripe-box" aria-labelledby="card-element-label">
+              <CardElement options={{ hidePostalCode: false }} />
+            </div>
+          </>
+        )}
         {stripeError && (
           <p
             ref={stripeErrorRef}
@@ -518,7 +552,12 @@ function PublicPaymentPage() {
 function AdminApp() {
   const { lang, setLang, t } = useI18n();
   const [token, setToken] = useState(localStorage.getItem("qpp_token") || "");
-  const [theme, setTheme] = useState(localStorage.getItem("qpp_theme") || "light");
+  const [theme, setTheme] = useState(() => {
+    const storedTheme = localStorage.getItem("qpp_theme");
+    if (storedTheme) return storedTheme;
+    if (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches) return "dark";
+    return "light";
+  });
   const [user, setUser] = useState(null);
   const [pages, setPages] = useState([]);
   const [summary, setSummary] = useState(null);
