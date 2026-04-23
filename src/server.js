@@ -28,6 +28,14 @@ app.get("/health", (_req, res) => {
   res.json({ ok: true, service: "qpp-backend", timestamp: new Date().toISOString() });
 });
 
+// QPP public checkout pages are intentionally embeddable via iframe.
+// Override helmet's frame-blocking headers for the /pay frontend route.
+app.use("/pay", (req, res, next) => {
+  res.setHeader("X-Frame-Options", "ALLOWALL");
+  res.setHeader("Content-Security-Policy", "frame-ancestors *");
+  next();
+});
+
 app.use("/auth", authRouter);
 app.use("/admin/pages", requireAuth, pagesRouter);
 app.use(

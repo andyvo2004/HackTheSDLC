@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { BrowserRouter, Navigate, Route, Routes, useParams } from "react-router-dom";
 import { CardElement, Elements, useElements, useStripe } from "@stripe/react-stripe-js";
 import { loadStripe } from "@stripe/stripe-js";
+import { DistributionPanel } from "./components/DistributionPanel.jsx";
 
 const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:4000";
 const STRIPE_KEY = import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY || "";
@@ -213,9 +214,15 @@ function PublicCheckoutForm({ slug, config, onResult }) {
         Email
         <input type="email" value={payerEmail} onChange={(e) => setPayerEmail(e.target.value)} required />
       </label>
-      {config.amountMode !== "fixed" && (
+      {config.amountMode === "fixed" && (
+        <div className="amount-display">
+          <span className="amount-label">Amount</span>
+          <span className="amount-value">${Number(config.fixedAmount || 0).toFixed(2)}</span>
+        </div>
+      )}
+      {config.amountMode === "range" && (
         <label>
-          Amount
+          {`Amount ($${Number(config.minAmount || 0).toFixed(2)} – $${Number(config.maxAmount || 0).toFixed(2)})`}
           <input
             type="number"
             min={config.minAmount || 0}
@@ -227,14 +234,46 @@ function PublicCheckoutForm({ slug, config, onResult }) {
           />
         </label>
       )}
+      {config.amountMode === "user_entered" && (
+        <label>
+          Amount
+          <input
+            type="number"
+            min={0}
+            step="0.01"
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
+            required
+          />
+        </label>
+      )}
       {config.customFields?.map((field) => (
         <label key={field.id}>
-          {field.label}
-          <input
-            required={field.required}
-            value={customResponses[field.id] || ""}
-            onChange={(e) => setCustomResponses((p) => ({ ...p, [field.id]: e.target.value }))}
-          />
+          {field.label}{field.required ? " *" : ""}
+          {field.type === "dropdown" ? (
+            <select
+              required={field.required}
+              value={customResponses[field.id] || ""}
+              onChange={(e) => setCustomResponses((p) => ({ ...p, [field.id]: e.target.value }))}
+            >
+              <option value="">Select...</option>
+              {(field.options || []).map((opt) => <option key={opt} value={opt}>{opt}</option>)}
+            </select>
+          ) : field.type === "checkbox" ? (
+            <input
+              type="checkbox"
+              required={field.required}
+              checked={Boolean(customResponses[field.id])}
+              onChange={(e) => setCustomResponses((p) => ({ ...p, [field.id]: e.target.checked }))}
+            />
+          ) : (
+            <input
+              type={field.type === "date" ? "date" : field.type === "number" ? "number" : "text"}
+              required={field.required}
+              value={customResponses[field.id] || ""}
+              onChange={(e) => setCustomResponses((p) => ({ ...p, [field.id]: e.target.value }))}
+            />
+          )}
         </label>
       ))}
       <label className="checkbox-line">
@@ -297,6 +336,7 @@ function PublicPaymentPage() {
     <main className="public-shell">
       <section className="public-card">
         <header className="public-header" style={{ background: config.brandColor || "#0f63ff" }}>
+          {config.logoUrl && <img src={config.logoUrl} alt={config.title} className="public-logo" />}
           <p>{config.title}</p>
           <small>{config.subtitle}</small>
         </header>
@@ -306,9 +346,16 @@ function PublicPaymentPage() {
           {result ? (
             <PaymentResultView result={result} onRetry={() => setResult(null)} />
           ) : STRIPE_KEY && stripePromise ? (
-            <Elements stripe={stripePromise}>
-              <PublicCheckoutForm slug={slug} config={config} onResult={setResult} />
-            </Elements>
+            <>
+              <div className="wallet-bar">
+                <button type="button" className="wallet-btn" disabled title="Apple Pay not available in this environment">Apple Pay</button>
+                <button type="button" className="wallet-btn" disabled title="Google Pay not available in this environment">G Pay</button>
+              </div>
+              <div className="wallet-divider"><span>or pay with card</span></div>
+              <Elements stripe={stripePromise}>
+                <PublicCheckoutForm slug={slug} config={config} onResult={setResult} />
+              </Elements>
+            </>
           ) : (
             <p className="error">
               Missing Stripe publishable key. Set `VITE_STRIPE_PUBLISHABLE_KEY` in your frontend environment.
@@ -329,6 +376,7 @@ function AdminApp() {
   const [transactions, setTransactions] = useState([]);
   const [insights, setInsights] = useState(null);
   const [pageVersions, setPageVersions] = useState({});
+  const [selectedPage, setSelectedPage] = useState(null);
   const [view, setView] = useState("overview");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -342,13 +390,25 @@ function AdminApp() {
     slug: "",
     title: "",
     subtitle: "Secure, self-service payment experience",
+    description: "",
+    logoUrl: "",
     amountMode: "fixed",
     fixedAmount: 25,
+    minAmount: 0,
+    maxAmount: 0,
     glCodes: "GL-100",
     brandColor: "#0f63ff",
     headerMessage: "Thank you for choosing our organization",
     footerMessage: "Need help? Reach our billing support team.",
   });
+
+  const [customFieldsBuilder, setCustomFieldsBuilder] = useState([]);
+  const addBuilderField = () => {
+    if (customFieldsBuilder.length >= 10) { setError("Maximum 10 custom fields allowed."); return; }
+    setCustomFieldsBuilder((prev) => [...prev, { id: `f${Date.now()}`, label: "", type: "text", required: false, options: "", order: prev.length }]);
+  };
+  const removeBuilderField = (idx) => setCustomFieldsBuilder((prev) => prev.filter((_, i) => i !== idx));
+  const updateBuilderField = (idx, key, val) => setCustomFieldsBuilder((prev) => prev.map((f, i) => i === idx ? { ...f, [key]: val } : f));
 
   const canEditPages = useMemo(
     () => user && ["owner", "editor"].includes(user.role),
@@ -415,30 +475,46 @@ function AdminApp() {
         body: {
           slug: pageForm.slug,
           title: pageForm.title,
+          subtitle: pageForm.subtitle,
+          description: pageForm.description,
+          logoUrl: pageForm.logoUrl,
           amountMode: pageForm.amountMode,
-          fixedAmount: Number(pageForm.fixedAmount),
+          fixedAmount: pageForm.amountMode === "fixed" ? Number(pageForm.fixedAmount) : undefined,
+          minAmount: pageForm.amountMode === "range" ? Number(pageForm.minAmount) : undefined,
+          maxAmount: pageForm.amountMode === "range" ? Number(pageForm.maxAmount) : undefined,
           glCodes: pageForm.glCodes
             .split(",")
             .map((code) => code.trim())
             .filter(Boolean),
-          subtitle: pageForm.subtitle,
           brandColor: pageForm.brandColor,
           headerMessage: pageForm.headerMessage,
           footerMessage: pageForm.footerMessage,
-          customFields: [],
+          customFields: customFieldsBuilder.map((f) => ({
+            id: f.id,
+            label: f.label,
+            type: f.type,
+            required: f.required,
+            options: f.type === "dropdown" ? f.options.split(",").map((o) => o.trim()).filter(Boolean) : [],
+            order: f.order,
+          })),
         },
       });
       setPageForm({
         slug: "",
         title: "",
         subtitle: "Secure, self-service payment experience",
+        description: "",
+        logoUrl: "",
         amountMode: "fixed",
         fixedAmount: 25,
+        minAmount: 0,
+        maxAmount: 0,
         glCodes: "GL-100",
         brandColor: "#0f63ff",
         headerMessage: "Thank you for choosing our organization",
         footerMessage: "Need help? Reach our billing support team.",
       });
+      setCustomFieldsBuilder([]);
       await fetchDashboard(token);
       setView("pages");
     } catch (err) {
@@ -454,6 +530,15 @@ function AdminApp() {
       await navigator.clipboard.writeText(info.publicUrl);
     } catch (err) {
       setError(`Copy failed: ${err.message}`);
+    }
+  };
+
+  const handleToggleStatus = async (pageId, currentActive) => {
+    try {
+      await apiRequest(`/admin/pages/${pageId}/status`, { method: "PATCH", token, body: { isActive: !currentActive } });
+      await fetchDashboard(token);
+    } catch (err) {
+      setError(err.message);
     }
   };
 
@@ -720,6 +805,7 @@ function AdminApp() {
               message="Create your first page in the editor and start collecting payments in minutes."
             />
           ) : (
+            <>
             <section className="panel">
               <h3>Configured pages</h3>
               <div className="table-wrap">
@@ -744,8 +830,17 @@ function AdminApp() {
                           <button className="tiny-btn" onClick={() => handleCopy(page.id)}>
                             Copy URL
                           </button>
+                          <button
+                            className={`tiny-btn${selectedPage?.id === page.id ? " active" : ""}`}
+                            onClick={() => setSelectedPage(selectedPage?.id === page.id ? null : page)}
+                          >
+                            {selectedPage?.id === page.id ? "Close" : "Distribute"}
+                          </button>
                           {canEditPages && (
                             <>
+                              <button className="tiny-btn" onClick={() => handleToggleStatus(page.id, page.isActive)}>
+                                {page.isActive ? "Disable" : "Enable"}
+                              </button>
                               <button className="tiny-btn" onClick={() => fetchVersions(page.id)}>
                                 Versions
                               </button>
@@ -778,6 +873,13 @@ function AdminApp() {
                 </div>
               ))}
             </section>
+            {selectedPage && (
+              <section className="panel">
+                <h3>Distribute — {selectedPage.title}</h3>
+                <DistributionPanel pageSlug={selectedPage.slug} pageTitle={selectedPage.title} />
+              </section>
+            )}
+            </>
           )
         )}
 
@@ -802,6 +904,22 @@ function AdminApp() {
                   <input
                     value={pageForm.subtitle}
                     onChange={(e) => setPageForm((p) => ({ ...p, subtitle: e.target.value }))}
+                  />
+                </label>
+                <label>
+                  Description
+                  <input
+                    value={pageForm.description}
+                    onChange={(e) => setPageForm((p) => ({ ...p, description: e.target.value }))}
+                  />
+                </label>
+                <label>
+                  Logo URL
+                  <input
+                    type="url"
+                    value={pageForm.logoUrl}
+                    onChange={(e) => setPageForm((p) => ({ ...p, logoUrl: e.target.value }))}
+                    placeholder="https://example.com/logo.png"
                   />
                 </label>
                 <label>
@@ -845,16 +963,42 @@ function AdminApp() {
                     <option value="user_entered">User entered</option>
                   </select>
                 </label>
-                <label>
-                  Fixed amount
-                  <input
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={pageForm.fixedAmount}
-                    onChange={(e) => setPageForm((p) => ({ ...p, fixedAmount: e.target.value }))}
-                  />
-                </label>
+                {pageForm.amountMode === "fixed" && (
+                  <label>
+                    Fixed amount
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={pageForm.fixedAmount}
+                      onChange={(e) => setPageForm((p) => ({ ...p, fixedAmount: e.target.value }))}
+                    />
+                  </label>
+                )}
+                {pageForm.amountMode === "range" && (
+                  <>
+                    <label>
+                      Minimum amount
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={pageForm.minAmount}
+                        onChange={(e) => setPageForm((p) => ({ ...p, minAmount: e.target.value }))}
+                      />
+                    </label>
+                    <label>
+                      Maximum amount
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={pageForm.maxAmount}
+                        onChange={(e) => setPageForm((p) => ({ ...p, maxAmount: e.target.value }))}
+                      />
+                    </label>
+                  </>
+                )}
                 <label>
                   GL codes (comma separated)
                   <input
@@ -862,6 +1006,42 @@ function AdminApp() {
                     onChange={(e) => setPageForm((p) => ({ ...p, glCodes: e.target.value }))}
                   />
                 </label>
+                <div className="field-builder-header">
+                  <span>Custom fields ({customFieldsBuilder.length}/10)</span>
+                  <button type="button" className="tiny-btn" onClick={addBuilderField}>+ Add field</button>
+                </div>
+                {customFieldsBuilder.map((field, idx) => (
+                  <div key={field.id} className="field-builder-row">
+                    <input
+                      placeholder="Field label"
+                      value={field.label}
+                      onChange={(e) => updateBuilderField(idx, "label", e.target.value)}
+                    />
+                    <select value={field.type} onChange={(e) => updateBuilderField(idx, "type", e.target.value)}>
+                      <option value="text">Text</option>
+                      <option value="number">Number</option>
+                      <option value="dropdown">Dropdown</option>
+                      <option value="date">Date</option>
+                      <option value="checkbox">Checkbox</option>
+                    </select>
+                    {field.type === "dropdown" && (
+                      <input
+                        placeholder="Options (comma separated)"
+                        value={field.options}
+                        onChange={(e) => updateBuilderField(idx, "options", e.target.value)}
+                      />
+                    )}
+                    <label className="checkbox-line">
+                      <input
+                        type="checkbox"
+                        checked={field.required}
+                        onChange={(e) => updateBuilderField(idx, "required", e.target.checked)}
+                      />
+                      Required
+                    </label>
+                    <button type="button" className="tiny-btn" onClick={() => removeBuilderField(idx)}>Remove</button>
+                  </div>
+                ))}
                 <button type="submit" disabled={loading || !canEditPages}>
                   {loading ? "Saving..." : "Create page"}
                 </button>
