@@ -5,6 +5,7 @@ import { loadStripe } from "@stripe/stripe-js";
 import { DistributionPanel } from "./components/DistributionPanel.jsx";
 import { getContrastColor } from "./utils/color.js";
 import ActivityFeed from "./components/ActivityFeed.jsx";
+import { LanguageProvider, LANGUAGE_OPTIONS, useI18n } from "./i18n.js";
 
 const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:4000";
 const STRIPE_KEY = import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY || "";
@@ -107,6 +108,7 @@ function EmptyState({ title, message }) {
 }
 
 function PaymentResultView({ result, onRetry }) {
+  const { t } = useI18n();
   const success = result?.type === "success";
   const headingRef = useRef(null);
   useEffect(() => {
@@ -125,15 +127,15 @@ function PaymentResultView({ result, onRetry }) {
           ))}
         </div>
       )}
-      <div className="result-icon" aria-hidden="true">
-        {success ? "✓" : "!"}
+      <div className={`result-icon result-icon--${success ? "success" : "failure"}`} aria-hidden="true">
+        <span className="result-icon-mark" />
       </div>
-      <h2 ref={headingRef} tabIndex={-1}>{success ? "Payment successful" : "Payment not completed"}</h2>
+      <h2 ref={headingRef} tabIndex={-1}>{success ? t("paymentSuccessful") : t("paymentNotCompleted")}</h2>
       <p>{result.message}</p>
-      {result.transactionId && <small>Transaction ID: {result.transactionId}</small>}
+      {result.transactionId && <small>{t("transactionId", { id: result.transactionId })}</small>}
       {!success && (
         <button type="button" onClick={onRetry}>
-          Try again
+          {t("tryAgain")}
         </button>
       )}
     </section>
@@ -141,6 +143,7 @@ function PaymentResultView({ result, onRetry }) {
 }
 
 function PublicCheckoutForm({ slug, config, onResult }) {
+  const { t } = useI18n();
   const stripe = useStripe();
   const elements = useElements();
   const [amount, setAmount] = useState(config.fixedAmount || 0);
@@ -155,22 +158,22 @@ function PublicCheckoutForm({ slug, config, onResult }) {
 
   const validate = () => {
     const errors = {};
-    if (!payerName.trim()) errors.payerName = "Full name is required.";
-    if (!payerEmail.trim()) errors.payerEmail = "Email is required.";
+    if (!payerName.trim()) errors.payerName = t("fieldRequired", { field: t("fullName") });
+    if (!payerEmail.trim()) errors.payerEmail = t("fieldRequired", { field: t("email") });
     if (config.amountMode === "range") {
       const amt = Number(amount);
       if (!amount || amt < Number(config.minAmount || 0)) {
-        errors.amount = `Amount must be at least $${Number(config.minAmount || 0).toFixed(2)}.`;
+        errors.amount = t("amountMin", { min: Number(config.minAmount || 0).toFixed(2) });
       } else if (config.maxAmount && amt > Number(config.maxAmount)) {
-        errors.amount = `Amount must be at most $${Number(config.maxAmount || 0).toFixed(2)}.`;
+        errors.amount = t("amountMax", { max: Number(config.maxAmount || 0).toFixed(2) });
       }
     }
     if (config.amountMode === "user_entered" && (!amount || Number(amount) <= 0)) {
-      errors.amount = "Please enter a valid amount.";
+      errors.amount = t("validAmountRequired");
     }
     config.customFields?.forEach((field) => {
       if (field.required && !customResponses[field.id]) {
-        errors[field.id] = `${field.label} is required.`;
+        errors[field.id] = t("fieldRequired", { field: field.label });
       }
     });
     return errors;
@@ -210,7 +213,7 @@ function PublicCheckoutForm({ slug, config, onResult }) {
         },
       });
       if (confirmResult.error) {
-        const msg = confirmResult.error.message || "Stripe confirmation failed";
+      const msg = confirmResult.error.message || t("stripeConfirmationFailed");
         setStripeError(msg);
         setTimeout(() => stripeErrorRef.current?.focus(), 50);
         throw new Error(msg);
@@ -222,15 +225,15 @@ function PublicCheckoutForm({ slug, config, onResult }) {
       });
 
       if (sync.status === "success") {
-        const msg = "Payment successful. Confirmation has been sent.";
+        const msg = t("paymentSuccessConfirmation");
         onResult({ type: "success", message: msg, transactionId: sync.transactionId, payerEmail, amount });
       } else {
-        const msg = `Payment status: ${sync.status}. Please check transaction details.`;
+        const msg = t("paymentStatusMessage", { status: sync.status });
         onResult({ type: "failure", message: msg, transactionId: sync.transactionId });
       }
     } catch (err) {
       if (!stripeError) {
-        const msg = `Payment failed: ${err.message}`;
+        const msg = t("paymentFailedMessage", { message: err.message });
         setStripeError(msg);
         setTimeout(() => stripeErrorRef.current?.focus(), 50);
         onResult({ type: "failure", message: msg });
@@ -241,12 +244,12 @@ function PublicCheckoutForm({ slug, config, onResult }) {
   };
 
   return (
-    <form className="public-form" onSubmit={submit} noValidate aria-label="Payment form">
-      <p className="required-note">* Required fields</p>
+    <form className="public-form" onSubmit={submit} noValidate aria-label={t("paymentForm")}>
+      <p className="required-note">{t("requiredFieldsNote")}</p>
       <fieldset className="form-fieldset">
-        <legend>Your Information</legend>
+        <legend>{t("yourInformation")}</legend>
         <div className="field-group">
-          <label htmlFor="field-payerName">Full name *</label>
+          <label htmlFor="field-payerName">{t("fullName")} *</label>
           <input
             id="field-payerName"
             value={payerName}
@@ -260,7 +263,7 @@ function PublicCheckoutForm({ slug, config, onResult }) {
           )}
         </div>
         <div className="field-group">
-          <label htmlFor="field-payerEmail">Email *</label>
+          <label htmlFor="field-payerEmail">{t("email")} *</label>
           <input
             id="field-payerEmail"
             type="email"
@@ -278,7 +281,7 @@ function PublicCheckoutForm({ slug, config, onResult }) {
 
       {config.amountMode === "fixed" && (
         <div className="amount-display">
-          <span className="amount-label">Amount</span>
+          <span className="amount-label">{t("amount")}</span>
           <span className="amount-value">${Number(config.fixedAmount || 0).toFixed(2)}</span>
         </div>
       )}
@@ -306,7 +309,7 @@ function PublicCheckoutForm({ slug, config, onResult }) {
       )}
       {config.amountMode === "user_entered" && (
         <div className="field-group">
-          <label htmlFor="field-amount">Amount *</label>
+          <label htmlFor="field-amount">{t("amount")} *</label>
           <input
             id="field-amount"
             type="number"
@@ -326,7 +329,7 @@ function PublicCheckoutForm({ slug, config, onResult }) {
 
       {config.customFields?.length > 0 && (
         <fieldset className="form-fieldset">
-          <legend>Additional Details</legend>
+          <legend>{t("additionalDetails")}</legend>
           {config.customFields.map((field) => (
             <div key={field.id} className={field.type === "checkbox" ? "checkbox-group" : "field-group"}>
               {field.type === "checkbox" ? (
@@ -354,7 +357,7 @@ function PublicCheckoutForm({ slug, config, onResult }) {
                       aria-invalid={!!fieldErrors[field.id]}
                       aria-describedby={fieldErrors[field.id] ? `err-${field.id}` : undefined}
                     >
-                      <option value="">Select an option</option>
+                      <option value="">{t("selectAnOption")}</option>
                       {(field.options || []).map((opt) => <option key={opt} value={opt}>{opt}</option>)}
                     </select>
                   ) : (
@@ -379,7 +382,7 @@ function PublicCheckoutForm({ slug, config, onResult }) {
       )}
 
       <fieldset className="form-fieldset">
-        <legend>Payment Details</legend>
+        <legend>{t("paymentDetails")}</legend>
         <div className="checkbox-group">
           <input
             id="ach-auth"
@@ -387,9 +390,9 @@ function PublicCheckoutForm({ slug, config, onResult }) {
             checked={achAuthorizationAccepted}
             onChange={(e) => setAchAuthorizationAccepted(e.target.checked)}
           />
-          <label htmlFor="ach-auth">I authorize bank transfer payment processing if ACH is selected.</label>
+          <label htmlFor="ach-auth">{t("achAuthorization")}</label>
         </div>
-        <p id="card-element-label" className="card-label">Card Details *</p>
+        <p id="card-element-label" className="card-label">{t("cardDetails")}</p>
         <div className="stripe-box" aria-labelledby="card-element-label">
           <CardElement options={{ hidePostalCode: false }} />
         </div>
@@ -407,13 +410,14 @@ function PublicCheckoutForm({ slug, config, onResult }) {
       </fieldset>
 
       <button type="submit" className="pay-btn" disabled={submitting || !stripe || !elements}>
-        {submitting ? "Processing..." : "Complete payment"}
+        {submitting ? t("processing") : t("completePayment")}
       </button>
     </form>
   );
 }
 
 function PublicPaymentPage() {
+  const { lang, setLang, t } = useI18n();
   const { slug } = useParams();
   const [config, setConfig] = useState(null);
   const [result, setResult] = useState(null);
@@ -446,7 +450,15 @@ function PublicPaymentPage() {
   if (error || !config) {
     return (
       <main className="public-shell">
-        <EmptyState title="Payment page unavailable" message={error || "Please verify this URL and try again."} />
+        <div className="lang-switcher">
+          <label htmlFor="lang-select-public">{t("language")}</label>
+          <select id="lang-select-public" value={lang} onChange={(e) => setLang(e.target.value)}>
+            {LANGUAGE_OPTIONS.map((option) => (
+              <option key={option.code} value={option.code}>{option.label}</option>
+            ))}
+          </select>
+        </div>
+        <EmptyState title={t("payUnavailable")} message={error || t("verifyUrlTryAgain")} />
       </main>
     );
   }
@@ -470,23 +482,23 @@ function PublicPaymentPage() {
         </header>
         <div className="public-body">
           {config.description && <p className="subtle">{config.description}</p>}
-          <div className="preview-banner">{config.headerMessage || "Complete secure payment below."}</div>
+          <div className="preview-banner">{config.headerMessage || t("completeSecurePaymentBelow")}</div>
           {result ? (
             <PaymentResultView result={result} onRetry={() => setResult(null)} />
           ) : STRIPE_KEY && stripePromise ? (
             <>
-              <div className="wallet-bar" role="group" aria-label="Express checkout options">
-                <button type="button" className="wallet-btn" disabled title="Apple Pay not available in this environment">Apple Pay</button>
-                <button type="button" className="wallet-btn" disabled title="Google Pay not available in this environment">G Pay</button>
+              <div className="wallet-bar" role="group" aria-label={t("expressCheckoutOptions")}>
+                <button type="button" className="wallet-btn" disabled title={t("applePayUnavailable")}>{t("applePay")}</button>
+                <button type="button" className="wallet-btn" disabled title={t("googlePayUnavailable")}>{t("gPay")}</button>
               </div>
-              <div className="wallet-divider" aria-hidden="true"><span>or pay with card</span></div>
+              <div className="wallet-divider" aria-hidden="true"><span>{t("orPayWithCard")}</span></div>
               <Elements stripe={stripePromise}>
                 <PublicCheckoutForm slug={slug} config={config} onResult={setResult} />
               </Elements>
             </>
           ) : (
             <p className="error">
-              Missing Stripe publishable key. Set `VITE_STRIPE_PUBLISHABLE_KEY` in your frontend environment.
+              {t("missingStripeKey")}
             </p>
           )}
           {config.footerMessage && <footer className="public-footer">{config.footerMessage}</footer>}
@@ -497,7 +509,9 @@ function PublicPaymentPage() {
 }
 
 function AdminApp() {
+  const { lang, setLang, t } = useI18n();
   const [token, setToken] = useState(localStorage.getItem("qpp_token") || "");
+  const [theme, setTheme] = useState(localStorage.getItem("qpp_theme") || "light");
   const [user, setUser] = useState(null);
   const [pages, setPages] = useState([]);
   const [summary, setSummary] = useState(null);
@@ -508,6 +522,13 @@ function AdminApp() {
   const [view, setView] = useState("overview");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [toast, setToast] = useState(null);
+  const toastTimerRef = useRef(null);
+  const [txnFilters, setTxnFilters] = useState({
+    status: "all",
+    method: "all",
+    search: "",
+  });
 
   const [loginForm, setLoginForm] = useState({
     email: "admin@example.com",
@@ -517,7 +538,7 @@ function AdminApp() {
   const [pageForm, setPageForm] = useState({
     slug: "",
     title: "",
-    subtitle: "Secure, self-service payment experience",
+    subtitle: t("secureSelfServiceExperience"),
     description: "",
     logoUrl: "",
     amountMode: "fixed",
@@ -526,13 +547,13 @@ function AdminApp() {
     maxAmount: 0,
     glCodes: "GL-100",
     brandColor: "#0f63ff",
-    headerMessage: "Thank you for choosing our organization",
-    footerMessage: "Need help? Reach our billing support team.",
+    headerMessage: t("thankYouChoosingOrg"),
+    footerMessage: t("needHelpBillingSupport"),
   });
 
   const [customFieldsBuilder, setCustomFieldsBuilder] = useState([]);
   const addBuilderField = () => {
-    if (customFieldsBuilder.length >= 10) { setError("Maximum 10 custom fields allowed."); return; }
+    if (customFieldsBuilder.length >= 10) { setError(t("maxCustomFields")); return; }
     setCustomFieldsBuilder((prev) => [...prev, { id: `f${Date.now()}`, label: "", type: "text", required: false, options: "", order: prev.length }]);
   };
   const removeBuilderField = (idx) => setCustomFieldsBuilder((prev) => prev.filter((_, i) => i !== idx));
@@ -552,6 +573,23 @@ function AdminApp() {
     [user],
   );
 
+  const showToast = (message, type = "success") => {
+    setToast({ message, type });
+    window.clearTimeout(toastTimerRef.current);
+    toastTimerRef.current = window.setTimeout(() => setToast(null), 2400);
+  };
+
+  useEffect(() => {
+    document.documentElement.setAttribute("data-theme", theme);
+    localStorage.setItem("qpp_theme", theme);
+  }, [theme]);
+
+  useEffect(() => {
+    return () => {
+      window.clearTimeout(toastTimerRef.current);
+    };
+  }, []);
+
   const fetchDashboard = async (activeToken) => {
     const authToken = activeToken || token;
     if (!authToken) return;
@@ -568,7 +606,7 @@ function AdminApp() {
       setUser(me);
       setPages(pageList);
       setSummary(reportSummary);
-      setTransactions(txns.slice(0, 8));
+      setTransactions(txns);
       setInsights(insightData);
     } catch (err) {
       setError(err.message);
@@ -639,7 +677,7 @@ function AdminApp() {
       setPageForm({
         slug: "",
         title: "",
-        subtitle: "Secure, self-service payment experience",
+        subtitle: t("secureSelfServiceExperience"),
         description: "",
         logoUrl: "",
         amountMode: "fixed",
@@ -648,8 +686,8 @@ function AdminApp() {
         maxAmount: 0,
         glCodes: "GL-100",
         brandColor: "#0f63ff",
-        headerMessage: "Thank you for choosing our organization",
-        footerMessage: "Need help? Reach our billing support team.",
+        headerMessage: t("thankYouChoosingOrg"),
+        footerMessage: t("needHelpBillingSupport"),
       });
       setCustomFieldsBuilder([]);
       await fetchDashboard(token);
@@ -665,8 +703,10 @@ function AdminApp() {
     try {
       const info = await apiRequest(`/admin/pages/${pageId}/share`, { token });
       await navigator.clipboard.writeText(info.publicUrl);
+      showToast(t("publicUrlCopied"));
     } catch (err) {
-      setError(`Copy failed: ${err.message}`);
+      setError(t("copyFailed", { message: err.message }));
+      showToast(t("copyUrlFailed"), "error");
     }
   };
 
@@ -674,8 +714,10 @@ function AdminApp() {
     try {
       await apiRequest(`/admin/pages/${pageId}/status`, { method: "PATCH", token, body: { isActive: !currentActive } });
       await fetchDashboard(token);
+      showToast(currentActive ? t("pageDisabled") : t("pageEnabled"));
     } catch (err) {
       setError(err.message);
+      showToast(t("statusUpdateFailed"), "error");
     }
   };
 
@@ -689,8 +731,10 @@ function AdminApp() {
       await apiRequest(`/admin/pages/${pageId}/publish`, { method: "POST", token });
       await fetchDashboard(token);
       await fetchVersions(pageId);
+      showToast(t("draftPublished"));
     } catch (err) {
       setError(err.message);
+      showToast(t("publishFailed"), "error");
     }
   };
 
@@ -699,7 +743,7 @@ function AdminApp() {
       const versions = pageVersions[pageId] || (await apiRequest(`/admin/pages/${pageId}/versions`, { token }));
       const target = versions[1];
       if (!target) {
-        setError("No prior version available to rollback.");
+        setError(t("noPriorVersionRollback"));
         return;
       }
       await apiRequest(`/admin/pages/${pageId}/rollback`, {
@@ -709,8 +753,10 @@ function AdminApp() {
       });
       await fetchDashboard(token);
       await fetchVersions(pageId);
+      showToast(t("rolledBack"));
     } catch (err) {
       setError(err.message);
+      showToast(t("rollbackFailed"), "error");
     }
   };
 
@@ -721,20 +767,48 @@ function AdminApp() {
     setPages([]);
     setSummary(null);
     setTransactions([]);
+    showToast(t("signedOut"));
   };
+
+  const filteredTransactions = useMemo(() => {
+    return transactions.filter((txn) => {
+      const matchesStatus = txnFilters.status === "all" || txn.status === txnFilters.status;
+      const matchesMethod = txnFilters.method === "all" || txn.paymentMethod === txnFilters.method;
+      const haystack = `${txn.payerEmail || ""} ${txn.id || ""}`.toLowerCase();
+      const matchesSearch = !txnFilters.search || haystack.includes(txnFilters.search.toLowerCase());
+      return matchesStatus && matchesMethod && matchesSearch;
+    });
+  }, [transactions, txnFilters]);
+
+  const transactionStatuses = useMemo(
+    () => ["all", ...new Set(transactions.map((txn) => txn.status).filter(Boolean))],
+    [transactions],
+  );
+  const transactionMethods = useMemo(
+    () => ["all", ...new Set(transactions.map((txn) => txn.paymentMethod).filter(Boolean))],
+    [transactions],
+  );
 
   if (!token) {
     return (
       <main className="auth-shell">
         <section className="auth-card">
-          <p className="eyebrow">Waystar Inspired Experience</p>
-          <h1>Admin Sign In</h1>
+          <div className="lang-switcher">
+            <label htmlFor="lang-select-auth">{t("language")}</label>
+            <select id="lang-select-auth" value={lang} onChange={(e) => setLang(e.target.value)}>
+            {LANGUAGE_OPTIONS.map((option) => (
+              <option key={option.code} value={option.code}>{option.label}</option>
+            ))}
+            </select>
+          </div>
+          <p className="eyebrow">{t("waystarInspiredExperience")}</p>
+          <h1>{t("adminSignIn")}</h1>
           <p className="auth-subtitle">
-            Clean, modern admin control for high-trust payment flows.
+            {t("authSubtitle")}
           </p>
-          <form className="form-grid" onSubmit={handleLogin} aria-label="Admin sign in">
+          <form className="form-grid" onSubmit={handleLogin} aria-label={t("adminSignIn")}>
             <div className="field-group">
-              <label htmlFor="login-email">Email address</label>
+              <label htmlFor="login-email">{t("emailAddress")}</label>
               <input
                 id="login-email"
                 type="email"
@@ -745,7 +819,7 @@ function AdminApp() {
               />
             </div>
             <div className="field-group">
-              <label htmlFor="login-password">Password</label>
+              <label htmlFor="login-password">{t("password")}</label>
               <input
                 id="login-password"
                 type="password"
@@ -756,7 +830,7 @@ function AdminApp() {
               />
             </div>
             <button type="submit" disabled={loading}>
-              {loading ? "Signing in..." : "Sign in"}
+              {loading ? t("signingIn") : t("signIn")}
             </button>
           </form>
           {error && <div role="alert" aria-live="assertive" className="error">{error}</div>}
@@ -768,14 +842,14 @@ function AdminApp() {
   return (
     <div className="app-shell">
       <aside className="sidebar">
-        <h2>Waystar QPP</h2>
+        <h2>{t("waystarQpp")}</h2>
         <p className="role-pill">{user?.role || "viewer"}</p>
         <div className="brand-mark" aria-hidden="true">
           <span />
           <span />
           <span />
         </div>
-        <nav aria-label="Admin navigation">
+        <nav aria-label={t("navigationLabel")}>
           {["overview", "insights", "pages", "create", "transactions"].map((item) => (
             <button
               key={item}
@@ -783,31 +857,51 @@ function AdminApp() {
               onClick={() => setView(item)}
               aria-current={view === item ? "page" : undefined}
             >
-              {item[0].toUpperCase() + item.slice(1)}
+              {t(item)}
             </button>
           ))}
         </nav>
-        <button className="logout-btn" onClick={handleLogout} aria-label="Sign out">
-          Log out
+        <button className="logout-btn" onClick={handleLogout} aria-label={t("logOut")}>
+          {t("logOut")}
         </button>
+        <button
+          className="theme-btn"
+          onClick={() => setTheme((prev) => (prev === "light" ? "dark" : "light"))}
+          aria-label={t("toggleDarkMode")}
+        >
+          {theme === "light" ? t("darkMode") : t("lightMode")}
+        </button>
+        <div className="lang-switcher lang-switcher--sidebar">
+          <label htmlFor="lang-select-sidebar">{t("language")}</label>
+          <select id="lang-select-sidebar" value={lang} onChange={(e) => setLang(e.target.value)}>
+            {LANGUAGE_OPTIONS.map((option) => (
+              <option key={option.code} value={option.code}>{option.label}</option>
+            ))}
+          </select>
+        </div>
       </aside>
 
       <main className="content-shell">
         <header>
-          <p className="eyebrow">Healthcare Payments Control Center</p>
-          <h1>Design-forward operations dashboard</h1>
+          <p className="eyebrow">{t("healthcarePaymentsControlCenter")}</p>
+          <h1>{t("dashboardTitle")}</h1>
         </header>
         {error && <div role="alert" aria-live="assertive" className="error">{error}</div>}
+        {toast && (
+          <div className={`toast toast--${toast.type}`} role="status" aria-live="polite">
+            {toast.message}
+          </div>
+        )}
 
         {view === "overview" && (
           <>
             <section className="stats-grid">
               <StatCard
-                label="Total Payments"
+                label={t("totalPayments")}
                 value={summary ? summary.totalPayments.toLocaleString() : "--"}
               />
               <StatCard
-                label="Amount Collected"
+                label={t("amountCollected")}
                 value={
                   summary
                     ? `$${Number(summary.totalAmountCollected || 0).toLocaleString()}`
@@ -815,7 +909,7 @@ function AdminApp() {
                 }
               />
               <StatCard
-                label="Average Payment"
+                label={t("averagePayment")}
                 value={
                   summary
                     ? `$${Number(summary.averagePaymentAmount || 0).toFixed(2)}`
@@ -829,8 +923,8 @@ function AdminApp() {
               <>
                 <section className="panel chart-panel">
                   <div>
-                    <h3>Collection velocity</h3>
-                    <p className="subtle">A visual trend of payment movement in your current cycle.</p>
+                    <h3>{t("collectionVelocity")}</h3>
+                    <p className="subtle">{t("collectionVelocityDesc")}</p>
                   </div>
                   <MiniAreaChart
                     values={[
@@ -844,16 +938,16 @@ function AdminApp() {
                   />
                 </section>
                 <section className="panel">
-                  <h3>Payment method mix</h3>
+                  <h3>{t("paymentMethodMix")}</h3>
                   {summary?.byPaymentMethod?.length ? (
                     <MethodBars items={summary.byPaymentMethod} />
                   ) : (
-                    <p className="subtle">No successful transactions yet. Run a test payment to populate this view.</p>
+                    <p className="subtle">{t("noSuccessfulTransactionsYet")}</p>
                   )}
                 </section>
                 <section className="panel">
-                  <h3>Payment pages</h3>
-                  <p>{pages.length} configured pages across your payment portfolio.</p>
+                  <h3>{t("paymentPages")}</h3>
+                  <p>{t("configuredPagesCount", { count: pages.length })}</p>
                 </section>
                 <section className="panel">
                   <ActivityFeed authToken={token} />
@@ -867,7 +961,7 @@ function AdminApp() {
           loading ? (
             <LoadingSkeleton />
           ) : !insights ? (
-            <EmptyState title="No insights yet" message="Perform some payment activity to populate analytics." />
+            <EmptyState title={t("noInsightsYet")} message={t("noInsightsMessage")} />
           ) : (
             <>
               <section className="stats-grid">
@@ -882,11 +976,11 @@ function AdminApp() {
                 />
               </section>
               <section className="panel">
-                <h3>Conversion funnel</h3>
+                <h3>{t("conversionFunnel")}</h3>
                 <div className="method-bars">
                   <div className="method-row">
                     <div className="method-meta">
-                      <span>View to Checkout</span>
+                      <span>{t("viewToCheckout")}</span>
                       <strong>{(insights.funnel.viewToCheckoutRate * 100).toFixed(1)}%</strong>
                     </div>
                     <div className="bar-track">
@@ -898,7 +992,7 @@ function AdminApp() {
                   </div>
                   <div className="method-row">
                     <div className="method-meta">
-                      <span>Checkout to Success</span>
+                      <span>{t("checkoutToSuccess")}</span>
                       <strong>{(insights.funnel.checkoutToSuccessRate * 100).toFixed(1)}%</strong>
                     </div>
                     <div className="bar-track">
@@ -911,16 +1005,16 @@ function AdminApp() {
                 </div>
               </section>
               <section className="panel">
-                <h3>Top page performance</h3>
+                <h3>{t("topPagePerformance")}</h3>
                 <div className="table-wrap">
-                  <table aria-label="Top page performance">
+                  <table aria-label={t("topPagePerformance")}>
                     <thead>
                       <tr>
-                        <th scope="col">Page</th>
-                        <th scope="col">Views</th>
-                        <th scope="col">Transactions</th>
-                        <th scope="col">Success</th>
-                        <th scope="col">Revenue</th>
+                        <th scope="col">{t("page")}</th>
+                        <th scope="col">{t("views")}</th>
+                        <th scope="col">{t("transactions")}</th>
+                        <th scope="col">{t("success")}</th>
+                        <th scope="col">{t("revenue")}</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -946,22 +1040,22 @@ function AdminApp() {
             <LoadingSkeleton />
           ) : pages.length === 0 ? (
             <EmptyState
-              title="No payment pages yet"
-              message="Create your first page in the editor and start collecting payments in minutes."
+              title={t("noPaymentPagesYet")}
+              message={t("noPaymentPagesMessage")}
             />
           ) : (
             <>
             <section className="panel">
-              <h3>Configured pages</h3>
+              <h3>{t("configuredPages")}</h3>
               <div className="table-wrap">
-                <table aria-label="Payment pages">
+                <table aria-label={t("paymentPages")}>
                   <thead>
                     <tr>
-                      <th scope="col">Title</th>
-                      <th scope="col">Slug</th>
-                      <th scope="col">Status</th>
-                      <th scope="col">Amount mode</th>
-                      <th scope="col">Actions</th>
+                      <th scope="col">{t("title")}</th>
+                      <th scope="col">{t("slug")}</th>
+                      <th scope="col">{t("status")}</th>
+                      <th scope="col">{t("amountMode")}</th>
+                      <th scope="col">{t("actions")}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -969,39 +1063,43 @@ function AdminApp() {
                       <tr key={page.id}>
                         <td>{page.title}</td>
                         <td>/{page.slug}</td>
-                        <td>{page.isActive ? "Active" : "Disabled"}</td>
+                        <td>
+                          <span className={`status-badge ${page.isActive ? "status-badge--active" : "status-badge--disabled"}`}>
+                            {page.isActive ? "Active" : "Disabled"}
+                          </span>
+                        </td>
                         <td>{page.amountMode}</td>
                         <td>
                           <button
                             className="tiny-btn"
                             onClick={() => handleCopy(page.id)}
-                            aria-label={`Copy URL for ${page.title}`}
+                            aria-label={`${t("copyUrl")} for ${page.title}`}
                           >
-                            Copy URL
+                            {t("copyUrl")}
                           </button>
                           <button
                             className={`tiny-btn${selectedPage?.id === page.id ? " active" : ""}`}
                             onClick={() => setSelectedPage(selectedPage?.id === page.id ? null : page)}
-                            aria-label={selectedPage?.id === page.id ? `Close distribution panel for ${page.title}` : `Distribute ${page.title}`}
+                            aria-label={selectedPage?.id === page.id ? `${t("close")} distribution panel for ${page.title}` : `${t("distribute")} ${page.title}`}
                             aria-expanded={selectedPage?.id === page.id}
                           >
-                            {selectedPage?.id === page.id ? "Close" : "Distribute"}
+                            {selectedPage?.id === page.id ? t("close") : t("distribute")}
                           </button>
                           {canEditPages && (
                             <>
                               <button
                                 className="tiny-btn"
                                 onClick={() => handleToggleStatus(page.id, page.isActive)}
-                                aria-label={page.isActive ? `Disable ${page.title}` : `Enable ${page.title}`}
+                                aria-label={page.isActive ? `${t("disable")} ${page.title}` : `${t("enable")} ${page.title}`}
                               >
-                                {page.isActive ? "Disable" : "Enable"}
+                                {page.isActive ? t("disable") : t("enable")}
                               </button>
                               <button
                                 className="tiny-btn"
                                 onClick={() => fetchVersions(page.id)}
                                 aria-label={`View versions for ${page.title}`}
                               >
-                                Versions
+                                {t("versions")}
                               </button>
                               {page.hasDraft && (
                                 <button
@@ -1009,7 +1107,7 @@ function AdminApp() {
                                   onClick={() => publishDraft(page.id)}
                                   aria-label={`Publish draft for ${page.title}`}
                                 >
-                                  Publish Draft
+                                  {t("publishDraft")}
                                 </button>
                               )}
                               <button
@@ -1017,7 +1115,7 @@ function AdminApp() {
                                 onClick={() => rollbackLatest(page.id)}
                                 aria-label={`Rollback ${page.title} to previous version`}
                               >
-                                Rollback
+                                {t("rollback")}
                               </button>
                             </>
                           )}
@@ -1042,7 +1140,7 @@ function AdminApp() {
             </section>
             {selectedPage && (
               <section className="panel">
-                <h3>Distribute — {selectedPage.title}</h3>
+              <h3>{t("distributePanelTitle", { title: selectedPage.title })}</h3>
                 <DistributionPanel pageSlug={selectedPage.slug} pageTitle={selectedPage.title} />
               </section>
             )}
@@ -1053,13 +1151,13 @@ function AdminApp() {
         {view === "create" && (
           <div className="create-grid">
             <section className="panel">
-              <h3>Create payment page</h3>
+              <h3>{t("createPaymentPage")}</h3>
               {!canEditPages && (
-                <p className="error">Your role is read-only. Ask an owner to grant editor access.</p>
+                <p className="error">{t("roleReadOnly")}</p>
               )}
-              <form className="form-grid" onSubmit={handleCreatePage} aria-label="Create payment page">
+              <form className="form-grid" onSubmit={handleCreatePage} aria-label={t("createPaymentPage")}>
                 <div className="field-group">
-                  <label htmlFor="cf-title">Page title *</label>
+                  <label htmlFor="cf-title">{t("pageTitle")} *</label>
                   <input
                     id="cf-title"
                     value={pageForm.title}
@@ -1069,7 +1167,7 @@ function AdminApp() {
                   />
                 </div>
                 <div className="field-group">
-                  <label htmlFor="cf-subtitle">Subtitle</label>
+                  <label htmlFor="cf-subtitle">{t("subtitle")}</label>
                   <input
                     id="cf-subtitle"
                     value={pageForm.subtitle}
@@ -1077,7 +1175,7 @@ function AdminApp() {
                   />
                 </div>
                 <div className="field-group">
-                  <label htmlFor="cf-description">Description</label>
+                  <label htmlFor="cf-description">{t("description")}</label>
                   <input
                     id="cf-description"
                     value={pageForm.description}
@@ -1085,7 +1183,7 @@ function AdminApp() {
                   />
                 </div>
                 <div className="field-group">
-                  <label htmlFor="cf-logoUrl">Logo URL</label>
+                  <label htmlFor="cf-logoUrl">{t("logoUrl")}</label>
                   <input
                     id="cf-logoUrl"
                     type="url"
@@ -1095,7 +1193,7 @@ function AdminApp() {
                   />
                 </div>
                 <div className="field-group">
-                  <label htmlFor="cf-slug">URL slug *</label>
+                  <label htmlFor="cf-slug">{t("urlSlug")} *</label>
                   <input
                     id="cf-slug"
                     value={pageForm.slug}
@@ -1105,7 +1203,7 @@ function AdminApp() {
                   />
                 </div>
                 <div className="field-group">
-                  <label htmlFor="cf-brandColor">Brand color (hex)</label>
+                  <label htmlFor="cf-brandColor">{t("brandColorHex")}</label>
                   <input
                     id="cf-brandColor"
                     type="color"
@@ -1114,7 +1212,7 @@ function AdminApp() {
                   />
                 </div>
                 <div className="field-group">
-                  <label htmlFor="cf-headerMessage">Header message</label>
+                  <label htmlFor="cf-headerMessage">{t("headerMessage")}</label>
                   <input
                     id="cf-headerMessage"
                     value={pageForm.headerMessage}
@@ -1122,7 +1220,7 @@ function AdminApp() {
                   />
                 </div>
                 <div className="field-group">
-                  <label htmlFor="cf-footerMessage">Footer message</label>
+                  <label htmlFor="cf-footerMessage">{t("footerMessage")}</label>
                   <input
                     id="cf-footerMessage"
                     value={pageForm.footerMessage}
@@ -1130,22 +1228,22 @@ function AdminApp() {
                   />
                 </div>
                 <fieldset className="form-fieldset">
-                  <legend>Payment Amount Mode</legend>
+                  <legend>{t("paymentAmountMode")}</legend>
                   <div className="field-group">
-                    <label htmlFor="cf-amountMode">Amount mode</label>
+                    <label htmlFor="cf-amountMode">{t("amountMode")}</label>
                     <select
                       id="cf-amountMode"
                       value={pageForm.amountMode}
                       onChange={(e) => setPageForm((p) => ({ ...p, amountMode: e.target.value }))}
                     >
-                      <option value="fixed">Fixed</option>
-                      <option value="range">Range</option>
-                      <option value="user_entered">User entered</option>
+                      <option value="fixed">{t("fixed")}</option>
+                      <option value="range">{t("range")}</option>
+                      <option value="user_entered">{t("userEntered")}</option>
                     </select>
                   </div>
                   {pageForm.amountMode === "fixed" && (
                     <div className="field-group">
-                      <label htmlFor="cf-fixedAmount">Fixed amount</label>
+                      <label htmlFor="cf-fixedAmount">{t("fixedAmount")}</label>
                       <input
                         id="cf-fixedAmount"
                         type="number"
@@ -1159,7 +1257,7 @@ function AdminApp() {
                   {pageForm.amountMode === "range" && (
                     <>
                       <div className="field-group">
-                        <label htmlFor="cf-minAmount">Minimum amount</label>
+                        <label htmlFor="cf-minAmount">{t("minimumAmount")}</label>
                         <input
                           id="cf-minAmount"
                           type="number"
@@ -1170,7 +1268,7 @@ function AdminApp() {
                         />
                       </div>
                       <div className="field-group">
-                        <label htmlFor="cf-maxAmount">Maximum amount</label>
+                        <label htmlFor="cf-maxAmount">{t("maximumAmount")}</label>
                         <input
                           id="cf-maxAmount"
                           type="number"
@@ -1184,7 +1282,7 @@ function AdminApp() {
                   )}
                 </fieldset>
                 <div className="field-group">
-                  <label htmlFor="cf-glCodes">GL codes (comma separated)</label>
+                  <label htmlFor="cf-glCodes">{t("glCodesCommaSeparated")}</label>
                   <input
                     id="cf-glCodes"
                     value={pageForm.glCodes}
@@ -1192,14 +1290,14 @@ function AdminApp() {
                   />
                 </div>
                 <div className="field-builder-header">
-                  <span>Custom fields ({customFieldsBuilder.length}/10)</span>
+                  <span>{t("customFields", { count: customFieldsBuilder.length })}</span>
                   <button type="button" className="tiny-btn" onClick={addBuilderField} aria-label="Add custom field">+ Add field</button>
                 </div>
                 {customFieldsBuilder.map((field, idx) => (
                   <div key={field.id} className="field-builder-row">
                     <input
                       aria-label={`Custom field ${idx + 1} label`}
-                      placeholder="Field label"
+                      placeholder={t("fieldLabel")}
                       value={field.label}
                       onChange={(e) => updateBuilderField(idx, "label", e.target.value)}
                     />
@@ -1208,16 +1306,16 @@ function AdminApp() {
                       value={field.type}
                       onChange={(e) => updateBuilderField(idx, "type", e.target.value)}
                     >
-                      <option value="text">Text</option>
-                      <option value="number">Number</option>
-                      <option value="dropdown">Dropdown</option>
-                      <option value="date">Date</option>
-                      <option value="checkbox">Checkbox</option>
+                      <option value="text">{t("text")}</option>
+                      <option value="number">{t("number")}</option>
+                      <option value="dropdown">{t("dropdown")}</option>
+                      <option value="date">{t("date")}</option>
+                      <option value="checkbox">{t("checkbox")}</option>
                     </select>
                     {field.type === "dropdown" && (
                       <input
                         aria-label={`Custom field ${idx + 1} dropdown options`}
-                        placeholder="Options (comma separated)"
+                        placeholder={t("optionsCommaSeparated")}
                         value={field.options}
                         onChange={(e) => updateBuilderField(idx, "options", e.target.value)}
                       />
@@ -1229,32 +1327,32 @@ function AdminApp() {
                         onChange={(e) => updateBuilderField(idx, "required", e.target.checked)}
                         aria-label={`${field.label || `Field ${idx + 1}`} required`}
                       />
-                      Required
+                      {t("required")}
                     </label>
                     <button
                       type="button"
                       className="tiny-btn"
                       onClick={() => moveBuilderField(idx, "up")}
                       disabled={idx === 0}
-                      aria-label={`Move ${field.label || `field ${idx + 1}`} up`}
+                      aria-label={`${t("moveUp")} ${field.label || `field ${idx + 1}`}`}
                     >↑</button>
                     <button
                       type="button"
                       className="tiny-btn"
                       onClick={() => moveBuilderField(idx, "down")}
                       disabled={idx === customFieldsBuilder.length - 1}
-                      aria-label={`Move ${field.label || `field ${idx + 1}`} down`}
+                      aria-label={`${t("moveDown")} ${field.label || `field ${idx + 1}`}`}
                     >↓</button>
                     <button
                       type="button"
                       className="tiny-btn"
                       onClick={() => removeBuilderField(idx)}
                       aria-label={`Remove ${field.label || `field ${idx + 1}`}`}
-                    >Remove</button>
+                    >{t("remove")}</button>
                   </div>
                 ))}
                 <button type="submit" disabled={loading || !canEditPages}>
-                  {loading ? "Saving..." : "Create page"}
+                  {loading ? t("saving") : t("createPage")}
                 </button>
                 <button
                   type="button"
@@ -1263,7 +1361,7 @@ function AdminApp() {
                     try {
                       const targetPage = pages[0];
                       if (!targetPage) {
-                        setError("Create a page first, then use Save as Draft.");
+                        setError(t("noPageForDraft"));
                         return;
                       }
                       await apiRequest(`/admin/pages/${targetPage.id}?mode=draft`, {
@@ -1298,15 +1396,15 @@ function AdminApp() {
                     }
                   }}
                 >
-                  Save as Draft (first page)
+                  {t("saveAsDraftFirstPage")}
                 </button>
               </form>
             </section>
             <section className="panel preview-panel">
-              <h3>Live payment page preview</h3>
+              <h3>{t("livePaymentPagePreview")}</h3>
               <article className="payment-preview">
                 <header style={{ background: pageForm.brandColor }}>
-                  <p>Quick Payment Page</p>
+                  <p>{t("quickPaymentPage")}</p>
                 </header>
                 <div className="preview-body">
                   <h4>{pageForm.title || "Your page title"}</h4>
@@ -1320,7 +1418,7 @@ function AdminApp() {
                     Email
                     <input readOnly value="payer@example.com" />
                   </label>
-                  <button type="button">Pay now</button>
+                  <button type="button">{t("payNow")}</button>
                   <small>{pageForm.footerMessage}</small>
                 </div>
               </article>
@@ -1333,36 +1431,80 @@ function AdminApp() {
             <LoadingSkeleton />
           ) : transactions.length === 0 ? (
             <EmptyState
-              title="No transactions yet"
-              message="Once payers complete checkout, transactions will appear here in real time."
+              title={t("noTransactionsYet")}
+              message={t("noTransactionsMessage")}
             />
           ) : (
             <section className="panel">
-              <h3>Recent transactions</h3>
+              <h3>{t("recentTransactions")}</h3>
+              <div className="txn-filters" role="group" aria-label="Transaction filters">
+                <label>
+                  {t("status")}
+                  <select
+                    value={txnFilters.status}
+                    onChange={(e) => setTxnFilters((prev) => ({ ...prev, status: e.target.value }))}
+                  >
+                    {transactionStatuses.map((status) => (
+                      <option key={status} value={status}>
+                        {status === "all" ? t("allStatuses") : status}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  {t("method")}
+                  <select
+                    value={txnFilters.method}
+                    onChange={(e) => setTxnFilters((prev) => ({ ...prev, method: e.target.value }))}
+                  >
+                    {transactionMethods.map((method) => (
+                      <option key={method} value={method}>
+                        {method === "all" ? t("allMethods") : method}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  {t("search")}
+                  <input
+                    type="search"
+                    placeholder={t("emailOrTransactionId")}
+                    value={txnFilters.search}
+                    onChange={(e) => setTxnFilters((prev) => ({ ...prev, search: e.target.value }))}
+                  />
+                </label>
+              </div>
               <div className="table-wrap">
-                <table aria-label="Recent transactions">
+                <table aria-label={t("recentTransactions")}>
                   <thead>
                     <tr>
-                      <th scope="col">Amount</th>
-                      <th scope="col">Status</th>
-                      <th scope="col">Method</th>
-                      <th scope="col">Payer</th>
-                      <th scope="col">Created</th>
+                      <th scope="col">{t("amount")}</th>
+                      <th scope="col">{t("status")}</th>
+                      <th scope="col">{t("method")}</th>
+                      <th scope="col">{t("payer")}</th>
+                      <th scope="col">{t("created")}</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {transactions.map((txn) => (
+                    {filteredTransactions.map((txn) => (
                       <tr key={txn.id}>
                         <td>${Number(txn.amount).toFixed(2)}</td>
-                        <td>{txn.status}</td>
+                        <td>
+                          <span className={`status-badge status-badge--${txn.status || "pending"}`}>
+                            {txn.status}
+                          </span>
+                        </td>
                         <td>{txn.paymentMethod}</td>
-                        <td>{txn.payerEmail || "N/A"}</td>
+                        <td>{txn.payerEmail || t("notAvailable")}</td>
                         <td>{new Date(txn.createdAt).toLocaleString()}</td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
+              {filteredTransactions.length === 0 && (
+                <p className="subtle">{t("noTransactionsMatch")}</p>
+              )}
             </section>
           )
         )}
@@ -1373,13 +1515,15 @@ function AdminApp() {
 
 function App() {
   return (
-    <BrowserRouter>
-      <Routes>
-        <Route path="/" element={<AdminApp />} />
-        <Route path="/pay/:slug" element={<PublicPaymentPage />} />
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
-    </BrowserRouter>
+    <LanguageProvider>
+      <BrowserRouter>
+        <Routes>
+          <Route path="/" element={<AdminApp />} />
+          <Route path="/pay/:slug" element={<PublicPaymentPage />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </BrowserRouter>
+    </LanguageProvider>
   );
 }
 
