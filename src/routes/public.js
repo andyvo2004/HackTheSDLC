@@ -78,6 +78,7 @@ const submitSchema = z.object({
   amount: z.number().optional(),
   payerName: z.string().optional(),
   payerEmail: z.string().email(),
+  payment_method_type: z.enum(["card_wallet", "us_bank_account"]).default("card_wallet"),
   paymentMethod: z.enum(["card", "wallet", "ach"]).default("card"),
   achAuthorizationAccepted: z.boolean().optional(),
   fieldResponses: z.record(z.string(), z.union([z.string(), z.number(), z.boolean()])).default({}),
@@ -108,12 +109,6 @@ publicRouter.post("/pay/:slug/create-payment-intent", async (req, res, next) => 
     if (amount == null || amount <= 0) {
       return res.status(400).json({ error: "Invalid amount for this payment page" });
     }
-    if (parsed.data.paymentMethod === "ach" && !parsed.data.achAuthorizationAccepted) {
-      return res.status(400).json({
-        error: "ACH authorization must be accepted before submission",
-      });
-    }
-
     for (const field of fields) {
       const val = parsed.data.fieldResponses[field.id];
       if (field.required && (val === undefined || val === null || val === "")) {
@@ -124,18 +119,32 @@ publicRouter.post("/pay/:slug/create-payment-intent", async (req, res, next) => 
     const txnId = uuidv4();
     const now = new Date().toISOString();
     const stripe = getStripeClient();
-    const intent = await stripe.paymentIntents.create({
+    const requestedMethod = parsed.data.payment_method_type;
+
+    const intentParams = {
       amount: dollarsToCents(amount),
       currency: "usd",
+      automatic_payment_methods: { enabled: true },
       receipt_email: parsed.data.payerEmail,
       description: `QPP payment for ${page.title}`,
       metadata: {
         transaction_id: txnId,
         page_id: page.id,
         page_slug: page.slug,
+        payment_type: requestedMethod,
       },
-      automatic_payment_methods: { enabled: true },
-    });
+    };
+
+    if (requestedMethod === "us_bank_account") {
+      intentParams.payment_method_options = {
+        us_bank_account: {
+          financial_connections: { permissions: ["payment_method"] },
+          verification_method: "instant",
+        },
+      };
+    }
+
+    const intent = await stripe.paymentIntents.create(intentParams);
 
     await db.run(
       `INSERT INTO transactions
@@ -145,7 +154,7 @@ publicRouter.post("/pay/:slug/create-payment-intent", async (req, res, next) => 
         txnId,
         page.id,
         amount,
-        parsed.data.paymentMethod,
+        requestedMethod === "us_bank_account" ? "ach" : parsed.data.paymentMethod,
         "pending",
         parsed.data.payerName || null,
         parsed.data.payerEmail,
